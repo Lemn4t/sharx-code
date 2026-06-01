@@ -48,6 +48,7 @@ COPY logger/ ./logger/
 COPY util/ ./util/
 COPY conndrop/ ./conndrop/
 COPY xray/ ./xray/
+COPY telemt/ ./telemt/
 COPY sub/ ./sub/
 COPY node/ ./node/
 # Go API and services (.dockerignore omits web/panel/; static UI comes from panelui below).
