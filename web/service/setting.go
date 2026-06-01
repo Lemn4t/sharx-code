@@ -140,6 +140,9 @@ var defaultValueMap = map[string]string{
 	"logRotateMaxAgeDays": "14",
 	"logRotateMaxBackups": "5",
 	"logRotateCompress":   "true",
+	// Geofile library auto-update (active assets with source URL)
+	"geofileAutoUpdateEnable":        "false",
+	"geofileAutoUpdateIntervalHours": "24",
 	// Panel UI preferences persisted in DB (instead of browser localStorage)
 	"panelTheme":        "web",
 	"panelLang":         "en",

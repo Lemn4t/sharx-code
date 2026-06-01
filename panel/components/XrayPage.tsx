@@ -13,6 +13,7 @@ import {
   mergeSectionIntoTemplate,
 } from "@/lib/xrayTemplateSlice";
 import { linkP, panel } from "@/lib/paths";
+import { normalizeAllSetting } from "@/lib/allSetting";
 import {
   buildXrayTemplateStepperItems,
   getActiveStepId,
@@ -23,7 +24,7 @@ import { XrayTemplateNav, type XrayTemplateNavId } from "@/components/XrayTempla
 import { sectionButtonLabel } from "@/components/xray/sectionButtonLabel";
 import { SimpleCoreForm } from "@/components/xray/SimpleCoreForm";
 import { XrayTemplateSectionContent } from "@/components/xray/XrayTemplateSectionContent";
-import { Button, ConfirmDialog, Spinner, Stepper, useToast, Input, Modal } from "@/components/ui";
+import { Button, ConfirmDialog, Spinner, Stepper, useToast, Input, Modal, Switch } from "@/components/ui";
 
 type XrayView = "template" | "runtime" | "geo";
 type SectionKey = "full" | string;
@@ -105,15 +106,47 @@ export function XrayPage({ initialView = "template" }: { initialView?: XrayView 
   const [geoResultOpen, setGeoResultOpen] = useState(false);
   const [geoResultTitle, setGeoResultTitle] = useState("");
   const [geoResult, setGeoResult] = useState<GeofileApplyResult | null>(null);
+  const [geofileAutoUpdateEnable, setGeofileAutoUpdateEnable] = useState(false);
+  const [geofileAutoUpdateIntervalHours, setGeofileAutoUpdateIntervalHours] = useState(24);
+  const [geofileAutoUpdateSaving, setGeofileAutoUpdateSaving] = useState(false);
 
   const sectionKey = useMemo<SectionKey>(() => (navId === "general" ? "full" : navId), [navId]);
 
   const loadSettingsFlags = useCallback(async () => {
     const s = await postJson<Record<string, unknown>>(panel("setting/all"));
     if (s.success && s.obj) {
-      setMulti(Boolean((s.obj as { multiNodeMode?: boolean }).multiNodeMode));
+      const settings = normalizeAllSetting(s.obj as Record<string, unknown>);
+      setMulti(settings.multiNodeMode);
+      setGeofileAutoUpdateEnable(settings.geofileAutoUpdateEnable);
+      setGeofileAutoUpdateIntervalHours(settings.geofileAutoUpdateIntervalHours);
     }
   }, []);
+
+  const saveGeofileAutoUpdate = useCallback(
+    async (patch: { geofileAutoUpdateEnable?: boolean; geofileAutoUpdateIntervalHours?: number }) => {
+      setGeofileAutoUpdateSaving(true);
+      try {
+        const s = await postJson<Record<string, unknown>>(panel("setting/all"));
+        if (!s.success || !s.obj) {
+          toast.error(t("fail"));
+          return;
+        }
+        const body = {
+          ...normalizeAllSetting(s.obj as Record<string, unknown>),
+          ...patch,
+        };
+        const r = await postJson(panel("setting/update"), body, true);
+        if (r.success) {
+          toast.success(t("success"));
+        } else {
+          toast.error(r.msg || t("fail"));
+        }
+      } finally {
+        setGeofileAutoUpdateSaving(false);
+      }
+    },
+    [t, toast],
+  );
 
   const loadTemplate = useCallback(async () => {
     setLoading(true);
@@ -655,6 +688,57 @@ export function XrayPage({ initialView = "template" }: { initialView?: XrayView 
               <h3 className="text-sm font-semibold text-[var(--fg)]">
                 {t("pages.xray.geoSectionTitle")}
               </h3>
+            </div>
+            <div className="mb-4 rounded-lg border border-[var(--border)] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-[var(--fg)]">
+                    {t("pages.xray.geoAutoUpdateEnable", { defaultValue: "Auto-update active geofiles" })}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--fg-muted)]">
+                    {t("pages.xray.geoAutoUpdateEnableDesc", {
+                      defaultValue:
+                        "Periodically re-download applied geofiles from their source URL and apply when content changed.",
+                    })}
+                  </p>
+                </div>
+                <Switch
+                  checked={geofileAutoUpdateEnable}
+                  disabled={geofileAutoUpdateSaving}
+                  onChange={(on) => {
+                    setGeofileAutoUpdateEnable(on);
+                    void saveGeofileAutoUpdate({ geofileAutoUpdateEnable: on });
+                  }}
+                  ariaLabel={t("pages.xray.geoAutoUpdateEnable", { defaultValue: "Auto-update active geofiles" })}
+                />
+              </div>
+              {geofileAutoUpdateEnable ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <label className="text-xs text-[var(--fg-muted)]" htmlFor="geofile-auto-update-hours">
+                    {t("pages.xray.geoAutoUpdateInterval", { defaultValue: "Check interval (hours)" })}
+                  </label>
+                  <Input
+                    id="geofile-auto-update-hours"
+                    type="number"
+                    min={1}
+                    max={168}
+                    className="max-w-[120px]"
+                    value={geofileAutoUpdateIntervalHours}
+                    disabled={geofileAutoUpdateSaving}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      setGeofileAutoUpdateIntervalHours(
+                        Number.isFinite(v) ? Math.min(168, Math.max(1, v)) : 24,
+                      );
+                    }}
+                    onBlur={() => {
+                      void saveGeofileAutoUpdate({
+                        geofileAutoUpdateIntervalHours: geofileAutoUpdateIntervalHours,
+                      });
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               <div className="space-y-2 rounded-lg border border-[var(--border)] p-3">

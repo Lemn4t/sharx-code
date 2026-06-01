@@ -98,6 +98,8 @@ export type AllSetting = {
   logRotateMaxAgeDays: number;
   logRotateMaxBackups: number;
   logRotateCompress: boolean;
+  geofileAutoUpdateEnable: boolean;
+  geofileAutoUpdateIntervalHours: number;
 };
 
 function toBool(v: unknown): boolean {
@@ -219,5 +221,7 @@ export function normalizeAllSetting(raw: Record<string, unknown>): AllSetting {
     logRotateMaxAgeDays: toInt(raw.logRotateMaxAgeDays, 14),
     logRotateMaxBackups: toInt(raw.logRotateMaxBackups, 5),
     logRotateCompress: toBool(raw.logRotateCompress !== undefined ? raw.logRotateCompress : true),
+    geofileAutoUpdateEnable: toBool(raw.geofileAutoUpdateEnable),
+    geofileAutoUpdateIntervalHours: toInt(raw.geofileAutoUpdateIntervalHours, 24),
   };
 }

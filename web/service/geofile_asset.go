@@ -16,6 +16,7 @@ import (
 	"github.com/konstpic/sharx-code/v2/config"
 	"github.com/konstpic/sharx-code/v2/database"
 	"github.com/konstpic/sharx-code/v2/database/model"
+	"github.com/konstpic/sharx-code/v2/logger"
 	"github.com/konstpic/sharx-code/v2/util/common"
 )
 
@@ -220,31 +221,15 @@ func (s *ServerService) UploadGeofileAsset(userId int, fileName string, data io.
 }
 
 func (s *ServerService) DownloadGeofileAssetFromURL(userId int, fileName string, rawURL string, displayName string) (*model.GeofileAsset, error) {
+	content, err := downloadGeofileContent(rawURL)
+	if err != nil {
+		return nil, err
+	}
 	parsedURL, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || parsedURL == nil || parsedURL.Host == "" {
 		return nil, common.NewError("invalid source URL")
 	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return nil, common.NewError("source URL must use http or https")
-	}
-	client := &http.Client{Timeout: 5 * time.Minute}
-	resp, err := client.Get(parsedURL.String())
-	if err != nil {
-		return nil, common.NewErrorf("download failed: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, common.NewErrorf("download failed with status %d", resp.StatusCode)
-	}
-	var out bytes.Buffer
-	limited := io.LimitReader(resp.Body, maxGeoFileUploadSize+1)
-	if _, err := io.Copy(&out, limited); err != nil {
-		return nil, common.NewErrorf("download stream failed: %v", err)
-	}
-	if out.Len() > maxGeoFileUploadSize {
-		return nil, common.NewErrorf("geofile too large: max %d bytes", maxGeoFileUploadSize)
-	}
-	return s.UploadGeofileAsset(userId, fileName, bytes.NewReader(out.Bytes()), displayName, parsedURL.String())
+	return s.UploadGeofileAsset(userId, fileName, bytes.NewReader(content), displayName, parsedURL.String())
 }
 
 func (s *ServerService) ApplyGeofileAsset(userId int, id int) (*GeofileApplyResult, *model.GeofileAsset, error) {
@@ -290,4 +275,82 @@ func (s *ServerService) DeleteGeofileAsset(userId int, id int) error {
 	}
 	_ = os.Remove(row.FilePath)
 	return nil
+}
+
+func downloadGeofileContent(rawURL string) ([]byte, error) {
+	parsedURL, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsedURL == nil || parsedURL.Host == "" {
+		return nil, common.NewError("invalid source URL")
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return nil, common.NewError("source URL must use http or https")
+	}
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Get(parsedURL.String())
+	if err != nil {
+		return nil, common.NewErrorf("download failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, common.NewErrorf("download failed with status %d", resp.StatusCode)
+	}
+	var out bytes.Buffer
+	limited := io.LimitReader(resp.Body, maxGeoFileUploadSize+1)
+	if _, err := io.Copy(&out, limited); err != nil {
+		return nil, common.NewErrorf("download stream failed: %v", err)
+	}
+	if out.Len() == 0 {
+		return nil, common.NewError("empty geofile download")
+	}
+	if out.Len() > maxGeoFileUploadSize {
+		return nil, common.NewErrorf("geofile too large: max %d bytes", maxGeoFileUploadSize)
+	}
+	return out.Bytes(), nil
+}
+
+// AutoUpdateActiveGeofileAssets downloads source URLs for active library assets and applies when content changed.
+func (s *ServerService) AutoUpdateActiveGeofileAssets() (int, error) {
+	db := database.GetDB()
+	var rows []model.GeofileAsset
+	if err := db.Where("is_active = ? AND source_url <> ''", true).Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	updated := 0
+	for i := range rows {
+		row := &rows[i]
+		changed, err := s.refreshActiveGeofileAssetIfChanged(row)
+		if err != nil {
+			logger.Warningf("geofile auto-update: asset %d (%s): %v", row.Id, row.FileType, err)
+			continue
+		}
+		if changed {
+			updated++
+		}
+	}
+	return updated, nil
+}
+
+func (s *ServerService) refreshActiveGeofileAssetIfChanged(row *model.GeofileAsset) (bool, error) {
+	if row == nil || strings.TrimSpace(row.SourceURL) == "" || !row.IsActive {
+		return false, nil
+	}
+	content, err := downloadGeofileContent(row.SourceURL)
+	if err != nil {
+		return false, err
+	}
+	sum := sha256.Sum256(content)
+	newHash := hex.EncodeToString(sum[:])
+	if strings.EqualFold(newHash, strings.TrimSpace(row.Sha256)) {
+		return false, nil
+	}
+	fileName, err := geofileNameFromType(row.FileType)
+	if err != nil {
+		return false, err
+	}
+	newRow, err := s.UploadGeofileAsset(row.UserId, fileName, bytes.NewReader(content), row.DisplayName, row.SourceURL)
+	if err != nil {
+		return false, err
+	}
+	_, _, applyErr := s.ApplyGeofileAsset(row.UserId, newRow.Id)
+	return true, applyErr
 }

@@ -143,6 +143,10 @@ type AllSetting struct {
 	LogRotateMaxAgeDays int  `json:"logRotateMaxAgeDays" form:"logRotateMaxAgeDays"`
 	LogRotateMaxBackups int  `json:"logRotateMaxBackups" form:"logRotateMaxBackups"`
 	LogRotateCompress   bool `json:"logRotateCompress" form:"logRotateCompress"`
+
+	// Geofile library auto-update (active assets with source URL)
+	GeofileAutoUpdateEnable         bool `json:"geofileAutoUpdateEnable" form:"geofileAutoUpdateEnable"`
+	GeofileAutoUpdateIntervalHours  int  `json:"geofileAutoUpdateIntervalHours" form:"geofileAutoUpdateIntervalHours"`
 	// JSON subscription routing rules
 }
 
@@ -257,6 +261,17 @@ func (s *AllSetting) CheckValid() error {
 		return err
 	}
 
+	if err := validateGeofileAutoUpdateSettings(s.GeofileAutoUpdateIntervalHours); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateGeofileAutoUpdateSettings(hours int) error {
+	if hours != 0 && (hours < 1 || hours > 168) {
+		return common.NewErrorf("geofileAutoUpdateIntervalHours must be between 1 and 168")
+	}
 	return nil
 }
 
