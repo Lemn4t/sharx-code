@@ -63,6 +63,24 @@ export function resolveMtProtoLinks(data: Pick<PublicSubPayload, "mtProtoLinks" 
   return extractTgProxyLinks(data.links ?? []);
 }
 
+/** Human-readable label for a tg://proxy link (server host or fallback index). */
+export function tgProxyDisplayLabel(link: string, index: number): string {
+  const q = link.indexOf("?");
+  if (q >= 0) {
+    const server = new URLSearchParams(link.slice(q + 1)).get("server");
+    if (server?.trim()) {
+      try {
+        return decodeURIComponent(server.trim());
+      } catch {
+        return server.trim();
+      }
+    }
+  }
+  const title = parseLinkTitle(link);
+  if (title && title !== link) return title;
+  return `Proxy ${index + 1}`;
+}
+
 export function parseLinkTitle(url: string): string {
   const i = url.lastIndexOf("#");
   if (i >= 0 && i < url.length - 1) {

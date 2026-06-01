@@ -1,7 +1,7 @@
 "use client";
 
 import { Copy, Download, QrCode, Smartphone, Zap } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   APP_CATALOG,
   isSharxV2Config,
@@ -16,7 +16,7 @@ import {
   type SubscriptionApp,
   type SupportedPlatform,
 } from "@/lib/sharxSubpageConfig";
-import { resolveMtProtoLinks } from "../types";
+import { resolveMtProtoLinks, tgProxyDisplayLabel } from "../types";
 import { PlatformBrandIcon } from "../PlatformBrandIcon";
 import shell from "../subscription-shell.module.css";
 import type { BlockRenderContext } from "./index";
@@ -48,7 +48,7 @@ function platformHasVisibleApps(group: InstallationPlatform, mtProtoLinks: strin
   return filterVisibleInstallationApps(group.apps, mtProtoLinks).length > 0;
 }
 
-function InstallationGuideShell({ children }: { children: React.ReactNode }) {
+function InstallationGuideShell({ children }: { children: ReactNode }) {
   return <div className="min-w-0">{children}</div>;
 }
 
@@ -180,7 +180,7 @@ type StepAction = {
   label: string;
   href?: string;
   onClick?: () => void;
-  icon: React.ReactNode;
+  icon: ReactNode;
   primary?: boolean;
   badge?: string;
   external?: boolean;
@@ -288,6 +288,67 @@ function ActionButton({
   );
 }
 
+function TelegramMtProtoProxyList({
+  links,
+  showQrCodes,
+  interactive,
+  onCopyLink,
+  onShowQr,
+  t,
+}: {
+  links: string[];
+  showQrCodes: boolean;
+  interactive: boolean;
+  onCopyLink: (url: string) => void;
+  onShowQr: (url: string, title: string) => void;
+  t: BlockRenderContext["t"];
+}) {
+  return (
+    <div className="space-y-2">
+      {links.map((link, i) => {
+        const label = tgProxyDisplayLabel(link, i);
+        return (
+          <div
+            key={`${link}-${i}`}
+            className="rounded-lg border border-[var(--sub-border,rgba(255,255,255,0.08))] bg-[var(--sub-surface,rgba(255,255,255,0.04))] p-3"
+          >
+            <div className="mb-2 text-[12px] font-medium text-[var(--sub-fg-strong,#fff)]">
+              {label}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ActionButton
+                interactive={interactive}
+                action={{
+                  label: t("pages.publicSub.mtproto.addProxy", { defaultValue: "Add proxy" }),
+                  href: link,
+                  icon: <Zap className="size-3.5" />,
+                  primary: true,
+                }}
+              />
+              <ActionButton
+                interactive={interactive}
+                action={{
+                  label: t("pages.publicSub.copyProxyLink", { defaultValue: "Copy proxy link" }),
+                  onClick: () => onCopyLink(link),
+                  icon: <Copy className="size-3.5" />,
+                }}
+              />
+              {showQrCodes ? (
+                <QrIconButton
+                  qrUrl={link}
+                  qrLabel={label}
+                  interactive={interactive}
+                  onShowQr={onShowQr}
+                />
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Steps view modes
 // ---------------------------------------------------------------------------
@@ -300,6 +361,7 @@ type StepsSharedProps = {
   qrUrl: string;
   qrLabel: string;
   onShowQr: (url: string, title: string) => void;
+  stepExtras?: Record<number, ReactNode>;
 };
 
 function QrIconButton({ qrUrl, qrLabel, interactive, onShowQr }: {
@@ -320,12 +382,13 @@ function QrIconButton({ qrUrl, qrLabel, interactive, onShowQr }: {
   );
 }
 
-function StepsTimeline({ steps, actions, interactive, showQrCodes, qrUrl, qrLabel, onShowQr }: StepsSharedProps) {
+function StepsTimeline({ steps, actions, interactive, showQrCodes, qrUrl, qrLabel, onShowQr, stepExtras }: StepsSharedProps) {
   return (
     <ol className="relative flex flex-col gap-0 ml-[15px]">
       {steps.map((s: InstallationStep, i: number) => {
         const action = actions[i];
-        const showQr = showQrCodes && qrUrl && i === 1;
+        const extra = stepExtras?.[i];
+        const showQr = showQrCodes && qrUrl && i === 1 && !extra;
         return (
           <li key={i} className="relative pb-5 pl-6 last:pb-0 last:before:hidden before:absolute before:left-[-2px] before:top-4 before:bottom-0 before:w-[2px] before:bg-[var(--sub-border,rgba(255,255,255,0.08))]">
             <span className="absolute -left-[11px] top-0.5 flex size-5 items-center justify-center rounded-full border-2 border-[var(--sub-accent,#22d3ee)] bg-[var(--sub-bg,#161b22)] text-[10px] font-bold text-[var(--sub-accent,#22d3ee)]">
@@ -342,7 +405,9 @@ function StepsTimeline({ steps, actions, interactive, showQrCodes, qrUrl, qrLabe
                   {s.text}
                 </p>
               ) : null}
-              {(action || showQr) ? (
+              {extra ? (
+                <div className="mt-2.5">{extra}</div>
+              ) : (action || showQr) ? (
                 <div className="mt-2.5 flex items-center gap-2">
                   {action ? <ActionButton action={action} interactive={interactive} /> : null}
                   {showQr ? <QrIconButton qrUrl={qrUrl} qrLabel={qrLabel} interactive={interactive} onShowQr={onShowQr} /> : null}
@@ -356,7 +421,7 @@ function StepsTimeline({ steps, actions, interactive, showQrCodes, qrUrl, qrLabe
   );
 }
 
-function StepsNumbered({ steps, actions, interactive, showQrCodes, qrUrl, qrLabel, onShowQr }: StepsSharedProps) {
+function StepsNumbered({ steps, actions, interactive, showQrCodes, qrUrl, qrLabel, onShowQr, stepExtras }: StepsSharedProps) {
   return (
     <div>
       <ol className="mb-3 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-[var(--sub-fg-muted,#8b949e)] marker:text-[var(--sub-accent,#22d3ee)]">
@@ -367,14 +432,15 @@ function StepsNumbered({ steps, actions, interactive, showQrCodes, qrUrl, qrLabe
             ) : null}
             {s.title?.trim() && s.text?.trim() ? " — " : null}
             {s.text}
+            {stepExtras?.[i] ? <div className="mt-2 not-italic">{stepExtras[i]}</div> : null}
           </li>
         ))}
       </ol>
       <div className="flex flex-wrap items-center gap-2">
         {actions.map((action, i) =>
-          action ? <ActionButton key={i} action={action} interactive={interactive} /> : null,
+          action && !stepExtras?.[i] ? <ActionButton key={i} action={action} interactive={interactive} /> : null,
         )}
-        {showQrCodes && qrUrl ? (
+        {showQrCodes && qrUrl && !stepExtras?.[1] ? (
           <QrIconButton qrUrl={qrUrl} qrLabel={qrLabel} interactive={interactive} onShowQr={onShowQr} />
         ) : null}
       </div>
@@ -382,7 +448,7 @@ function StepsNumbered({ steps, actions, interactive, showQrCodes, qrUrl, qrLabe
   );
 }
 
-function StepsPlain({ steps, actions, interactive, showQrCodes, qrUrl, qrLabel, onShowQr }: StepsSharedProps) {
+function StepsPlain({ steps, actions, interactive, showQrCodes, qrUrl, qrLabel, onShowQr, stepExtras }: StepsSharedProps) {
   return (
     <div>
       <div className="mb-3 flex flex-col gap-2">
@@ -392,14 +458,15 @@ function StepsPlain({ steps, actions, interactive, showQrCodes, qrUrl, qrLabel, 
               <span className="font-medium text-[var(--sub-fg,#c9d1d9)]">{s.title}: </span>
             ) : null}
             {s.text}
+            {stepExtras?.[i] ? <div className="mt-2">{stepExtras[i]}</div> : null}
           </div>
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {actions.map((action, i) =>
-          action ? <ActionButton key={i} action={action} interactive={interactive} /> : null,
+          action && !stepExtras?.[i] ? <ActionButton key={i} action={action} interactive={interactive} /> : null,
         )}
-        {showQrCodes && qrUrl ? (
+        {showQrCodes && qrUrl && !stepExtras?.[1] ? (
           <QrIconButton qrUrl={qrUrl} qrLabel={qrLabel} interactive={interactive} onShowQr={onShowQr} />
         ) : null}
       </div>
@@ -428,10 +495,11 @@ function SelectedAppDetail(props: DetailProps) {
   } = props;
   const { label, deepLinkTemplate, iconUrl, supportsEncrypted } = getAppMeta(entry);
 
+  const isTelegramMulti = entry.app === "telegram" && tgProxyLinks.length > 1;
   let addHref = expandTemplate(deepLinkTemplate, subscriptionUrl);
   let isEncrypted = false;
   if (entry.app === "telegram") {
-    addHref = tgProxyLinks[0] ?? "";
+    addHref = isTelegramMulti ? "" : tgProxyLinks[0] ?? "";
     isEncrypted = false;
   } else if (entry.useEncrypted && supportsEncrypted) {
     if (entry.app === "happ" && happEncryptedUrl) {
@@ -465,10 +533,39 @@ function SelectedAppDetail(props: DetailProps) {
         ? t("pages.publicSub.mtproto.addProxy", { defaultValue: "Add proxy" })
         : undefined,
     forceShowPrimaryDeeplink:
-      entry.app === "telegram" && !!addHref,
+      entry.app === "telegram" && !!addHref && !isTelegramMulti,
     step1CopyUrl:
-      entry.app === "telegram" && tgProxyLinks.length > 0 ? tgProxyLinks[0] : undefined,
+      entry.app === "telegram" && !isTelegramMulti && tgProxyLinks.length > 0
+        ? tgProxyLinks[0]
+        : undefined,
   });
+
+  const stepExtras =
+    isTelegramMulti
+      ? {
+          1: (
+            <TelegramMtProtoProxyList
+              links={tgProxyLinks}
+              showQrCodes={showQrCodes}
+              interactive={interactive}
+              onCopyLink={onCopyLink}
+              onShowQr={onShowQr}
+              t={t}
+            />
+          ),
+        }
+      : undefined;
+
+  const stepsProps = {
+    steps,
+    actions,
+    interactive,
+    showQrCodes,
+    qrUrl,
+    qrLabel: label,
+    onShowQr,
+    stepExtras,
+  };
 
   return (
     <div className="mt-1">
@@ -490,11 +587,11 @@ function SelectedAppDetail(props: DetailProps) {
       </div>
 
       {stepsView === "timeline" ? (
-        <StepsTimeline steps={steps} actions={actions} interactive={interactive} showQrCodes={showQrCodes} qrUrl={qrUrl} qrLabel={label} onShowQr={onShowQr} />
+        <StepsTimeline {...stepsProps} />
       ) : stepsView === "numbered" ? (
-        <StepsNumbered steps={steps} actions={actions} interactive={interactive} showQrCodes={showQrCodes} qrUrl={qrUrl} qrLabel={label} onShowQr={onShowQr} />
+        <StepsNumbered {...stepsProps} />
       ) : (
-        <StepsPlain steps={steps} actions={actions} interactive={interactive} showQrCodes={showQrCodes} qrUrl={qrUrl} qrLabel={label} onShowQr={onShowQr} />
+        <StepsPlain {...stepsProps} />
       )}
     </div>
   );

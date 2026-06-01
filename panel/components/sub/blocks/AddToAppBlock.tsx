@@ -7,7 +7,7 @@ import {
   type AppButton,
   type BlockAddToApp,
 } from "@/lib/sharxSubpageConfig";
-import { resolveMtProtoLinks } from "../types";
+import { resolveMtProtoLinks, tgProxyDisplayLabel } from "../types";
 import shell from "../subscription-shell.module.css";
 import type { BlockRenderContext } from "./index";
 
@@ -73,50 +73,53 @@ function makeSubstitutionVars(opts: {
   };
 }
 
-/** Resolve one {@link AppButton} into a rendered button (label + final href). */
-function renderButton(
+/** Resolve one {@link AppButton} into rendered button(s) (label + final href). */
+function renderButtons(
   button: AppButton,
   vars: SubstitutionVars,
-  tgProxyFirst: string,
-): RenderedButton | null {
-  if (button.enabled === false) return null;
+  tgProxyLinks: string[],
+): RenderedButton[] {
+  if (button.enabled === false) return [];
   const catalog = APP_CATALOG[button.app];
   const label = button.label?.trim() || catalog?.label || button.app;
   const iconUrl = button.iconUrl?.trim() || catalog?.iconUrl || "";
 
   if (button.app === "telegram") {
-    const href = tgProxyFirst.trim();
-    if (!href) return null;
-    return {
-      id: button.id,
-      label,
+    if (tgProxyLinks.length === 0) return [];
+    return tgProxyLinks.map((href, i) => ({
+      id: tgProxyLinks.length > 1 ? `${button.id}-${i}` : button.id,
+      label: tgProxyLinks.length > 1 ? `${label} · ${tgProxyDisplayLabel(href, i)}` : label,
       href,
       iconUrl,
       platforms: button.platforms,
-    };
+    }));
   }
 
   // Prefer encrypted-specific shortcuts when admin opted in and server gave us one.
   if (button.useEncrypted && catalog?.supportsEncrypted) {
     if (button.app === "happ" && vars.happEncrypted) {
-      return {
-        id: button.id,
-        label,
-        href: vars.happEncrypted,
-        iconUrl,
-        platforms: button.platforms,
-        badge: "E2E",
-      };
+      return [
+        {
+          id: button.id,
+          label,
+          href: vars.happEncrypted,
+          iconUrl,
+          platforms: button.platforms,
+          badge: "E2E",
+        },
+      ];
     }
     if (button.app === "v2raytun" && vars.v2raytunEncrypted) {
-      return {
-        id: button.id,
-        label,
-        href: vars.v2raytunEncrypted,
-        iconUrl,
-        platforms: button.platforms,
-        badge: "E2E",
-      };
+      return [
+        {
+          id: button.id,
+          label,
+          href: vars.v2raytunEncrypted,
+          iconUrl,
+          platforms: button.platforms,
+          badge: "E2E",
+        },
+      ];
     }
   }
 
@@ -125,14 +128,16 @@ function renderButton(
     catalog?.deepLinkTemplate ||
     "{url}";
   const href = substitute(template, vars);
-  if (!href) return null;
-  return {
-    id: button.id,
-    label,
-    href,
-    iconUrl,
-    platforms: button.platforms,
-  };
+  if (!href) return [];
+  return [
+    {
+      id: button.id,
+      label,
+      href,
+      iconUrl,
+      platforms: button.platforms,
+    },
+  ];
 }
 
 export function AddToAppBlock({
@@ -157,10 +162,10 @@ export function AddToAppBlock({
     preferJsonUrl: normalized.preferJsonUrl,
   });
 
-  const tgProxyFirst = resolveMtProtoLinks(data)[0] ?? "";
+  const tgProxyLinks = resolveMtProtoLinks(data);
 
   const rendered = buttons
-    .map((b) => renderButton(b, vars, tgProxyFirst))
+    .flatMap((b) => renderButtons(b, vars, tgProxyLinks))
     .filter((r): r is RenderedButton => r !== null);
   if (rendered.length === 0) return null;
 
