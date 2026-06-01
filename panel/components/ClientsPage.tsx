@@ -2249,7 +2249,7 @@ export function ClientsPage() {
   const { t } = useTranslation();
   const toast = useToast();
   const ws = usePanelWebSocket();
-  const initialTablePrefs = useMemo(() => defaultClientsTablePrefs(), []);
+  const tablePrefsReadyRef = useRef(false);
   const resyncAfterDisconnect = useRef(false);
   /** key: client id — debounce offline after traffic drops the email from the online set. */
   const offlineStatusTimersRef = useRef<
@@ -2289,17 +2289,18 @@ export function ClientsPage() {
   const [sheetInlineBusy, setSheetInlineBusy] = useState<"reset" | "clearHwid" | null>(null);
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
-  const [filtersVisible, setFiltersVisible] = useState(initialTablePrefs.filtersVisible);
+  const defaultTablePrefs = useMemo(() => defaultClientsTablePrefs(), []);
+  const [filtersVisible, setFiltersVisible] = useState(defaultTablePrefs.filtersVisible);
   const [columnFilters, setColumnFilters] = useState<Record<ColumnFilterId, string>>(
-    initialTablePrefs.columnFilters,
+    defaultTablePrefs.columnFilters,
   );
-  const [filterConn, setFilterConn] = useState<FilterConn>(initialTablePrefs.filterConn);
-  const [filterAcct, setFilterAcct] = useState<FilterAcct>(initialTablePrefs.filterAcct);
+  const [filterConn, setFilterConn] = useState<FilterConn>(defaultTablePrefs.filterConn);
+  const [filterAcct, setFilterAcct] = useState<FilterAcct>(defaultTablePrefs.filterAcct);
   const [filterInboundId, setFilterInboundId] = useState<string>(
-    initialTablePrefs.filterInboundId,
+    defaultTablePrefs.filterInboundId,
   );
   const [filterGroupId, setFilterGroupId] = useState<string>(
-    initialTablePrefs.filterGroupId,
+    defaultTablePrefs.filterGroupId,
   );
   const [groupOptions, setGroupOptions] = useState<GroupOption[]>([]);
   const [inboundFilterOptions, setInboundFilterOptions] = useState<InboundOption[]>(
@@ -2307,17 +2308,17 @@ export function ClientsPage() {
   );
   const [columnVisibility, setColumnVisibility] = useState<
     Record<DataColumnId, boolean>
-  >(initialTablePrefs.columnVisibility);
+  >(defaultTablePrefs.columnVisibility);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const columnsMenuRef = useRef<HTMLDivElement>(null);
   const [trafficCompareOp, setTrafficCompareOp] = useState<CompareOp>(
-    initialTablePrefs.trafficCompareOp,
+    defaultTablePrefs.trafficCompareOp,
   );
   const [expiryCompareOp, setExpiryCompareOp] = useState<CompareOp>(
-    initialTablePrefs.expiryCompareOp,
+    defaultTablePrefs.expiryCompareOp,
   );
-  const [sortKey, setSortKey] = useState<ClientSortKey>(initialTablePrefs.sortKey);
-  const [sortDir, setSortDir] = useState<SortDir>(initialTablePrefs.sortDir);
+  const [sortKey, setSortKey] = useState<ClientSortKey>(defaultTablePrefs.sortKey);
+  const [sortDir, setSortDir] = useState<SortDir>(defaultTablePrefs.sortDir);
   const headerSelectRef = useRef<HTMLInputElement>(null);
   const [subscriptionQrUrl, setSubscriptionQrUrl] = useState<string | null>(null);
   const [subscriptionEncryptionData, setSubscriptionEncryptionData] = useState<{
@@ -2392,19 +2393,50 @@ export function ClientsPage() {
   }, []);
 
   useEffect(() => {
-    void setUiPref("clientsTablePrefs", encodeClientsTablePrefs({
-      columnVisibility,
-      columnFilters,
-      filtersVisible,
-      filterConn,
-      filterAcct,
-      filterInboundId,
-      filterGroupId,
-      trafficCompareOp,
-      expiryCompareOp,
-      sortKey,
-      sortDir,
-    }));
+    let cancelled = false;
+    (async () => {
+      const raw = await getUiPref("clientsTablePrefs");
+      if (cancelled) return;
+      const prefs = parseClientsTablePrefs(raw);
+      setFiltersVisible(prefs.filtersVisible);
+      setColumnFilters(prefs.columnFilters);
+      setFilterConn(prefs.filterConn);
+      setFilterAcct(prefs.filterAcct);
+      setFilterInboundId(prefs.filterInboundId);
+      setFilterGroupId(prefs.filterGroupId);
+      setColumnVisibility(prefs.columnVisibility);
+      setTrafficCompareOp(prefs.trafficCompareOp);
+      setExpiryCompareOp(prefs.expiryCompareOp);
+      setSortKey(prefs.sortKey);
+      setSortDir(prefs.sortDir);
+      tablePrefsReadyRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!tablePrefsReadyRef.current) return;
+    const timer = window.setTimeout(() => {
+      void setUiPref(
+        "clientsTablePrefs",
+        encodeClientsTablePrefs({
+          columnVisibility,
+          columnFilters,
+          filtersVisible,
+          filterConn,
+          filterAcct,
+          filterInboundId,
+          filterGroupId,
+          trafficCompareOp,
+          expiryCompareOp,
+          sortKey,
+          sortDir,
+        }),
+      );
+    }, 400);
+    return () => window.clearTimeout(timer);
   }, [
     columnVisibility,
     columnFilters,
@@ -2418,24 +2450,6 @@ export function ClientsPage() {
     sortKey,
     sortDir,
   ]);
-
-  useEffect(() => {
-    (async () => {
-      const raw = await getUiPref("clientsTablePrefs");
-      const prefs = parseClientsTablePrefs(raw);
-      setFiltersVisible(prefs.filtersVisible);
-      setColumnFilters(prefs.columnFilters);
-      setFilterConn(prefs.filterConn);
-      setFilterAcct(prefs.filterAcct);
-      setFilterInboundId(prefs.filterInboundId);
-      setFilterGroupId(prefs.filterGroupId);
-      setColumnVisibility(prefs.columnVisibility);
-      setTrafficCompareOp(prefs.trafficCompareOp);
-      setExpiryCompareOp(prefs.expiryCompareOp);
-      setSortKey(prefs.sortKey);
-      setSortDir(prefs.sortDir);
-    })();
-  }, []);
 
   useEffect(() => {
     if (!ws) return;

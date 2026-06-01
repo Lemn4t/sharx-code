@@ -254,7 +254,11 @@ func (a *SettingController) getUIPreference(c *gin.Context) {
 		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "fail"))
 		return
 	}
-	v, err := a.settingService.GetUIPreference(form.Key)
+	userId := 0
+	if user := session.GetLoginUser(c); user != nil {
+		userId = user.Id
+	}
+	v, err := a.settingService.GetUIPreferenceForUser(userId, form.Key)
 	if err != nil {
 		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "fail"))
 		return
@@ -268,7 +272,11 @@ func (a *SettingController) setUIPreference(c *gin.Context) {
 		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "fail"))
 		return
 	}
-	err := a.settingService.SetUIPreference(form.Key, form.Value)
+	userId := 0
+	if user := session.GetLoginUser(c); user != nil {
+		userId = user.Id
+	}
+	err := a.settingService.SetUIPreferenceForUser(userId, form.Key, form.Value)
 	if err != nil {
 		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "fail"))
 		return

@@ -159,6 +159,18 @@ var allowedUIPreferenceKeys = map[string]bool{
 	"clientsTablePrefs": true,
 }
 
+// userScopedUIPreferenceKeys are stored per panel user (settings key suffix :user:{id}).
+var userScopedUIPreferenceKeys = map[string]bool{
+	"clientsTablePrefs": true,
+}
+
+func uiPreferenceStorageKey(logicalKey string, userId int) string {
+	if userScopedUIPreferenceKeys[logicalKey] && userId > 0 {
+		return fmt.Sprintf("%s:user:%d", logicalKey, userId)
+	}
+	return logicalKey
+}
+
 // SettingService provides business logic for application settings management.
 // It handles configuration storage, retrieval, and validation for all system settings.
 type SettingService struct{}
@@ -393,17 +405,40 @@ func (s *SettingService) setString(key string, value string) error {
 }
 
 func (s *SettingService) GetUIPreference(key string) (string, error) {
+	return s.GetUIPreferenceForUser(0, key)
+}
+
+func (s *SettingService) GetUIPreferenceForUser(userId int, key string) (string, error) {
 	if !allowedUIPreferenceKeys[key] {
 		return "", common.NewErrorf("unsupported UI preference key: %s", key)
 	}
-	return s.getString(key)
+	storageKey := uiPreferenceStorageKey(key, userId)
+	v, err := s.getString(storageKey)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(v) == "" && userId > 0 && userScopedUIPreferenceKeys[key] {
+		legacy, err := s.getString(key)
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(legacy) != "" {
+			_ = s.setString(storageKey, legacy)
+			return legacy, nil
+		}
+	}
+	return v, nil
 }
 
 func (s *SettingService) SetUIPreference(key string, value string) error {
+	return s.SetUIPreferenceForUser(0, key, value)
+}
+
+func (s *SettingService) SetUIPreferenceForUser(userId int, key string, value string) error {
 	if !allowedUIPreferenceKeys[key] {
 		return common.NewErrorf("unsupported UI preference key: %s", key)
 	}
-	return s.setString(key, value)
+	return s.setString(uiPreferenceStorageKey(key, userId), value)
 }
 
 func (s *SettingService) getBool(key string) (bool, error) {
