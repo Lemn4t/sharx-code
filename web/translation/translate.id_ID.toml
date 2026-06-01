@@ -1539,6 +1539,7 @@ deleteProfileDetail = "This cannot be undone. Profiles used by outbounds cannot 
 
 [pages.nodes]
 responseTime = "Response Time"
+workerVersion = "Worker Version"
 xrayVersion = "Xray Version"
 telemtVersion = "Telemt Version"
 xrayState = "Xray"
