@@ -14,6 +14,7 @@ const (
 	UABrowser
 	UAHapp
 	UAV2RayTun
+	UAINCY
 	UAV2RayNG
 	UAHiddify
 	UAStreisand
@@ -57,6 +58,8 @@ func DispatchByUA(c *gin.Context) (UAClient, UAResponseFormat) {
 		return UAHapp, FormatEncrypted
 	case strings.Contains(ua, "v2raytun"):
 		return UAV2RayTun, FormatEncrypted
+	case strings.Contains(ua, "incy") || strings.EqualFold(strings.TrimSpace(c.GetHeader("x-client")), "incy"):
+		return UAINCY, FormatBase64
 	case strings.Contains(ua, "v2rayng"):
 		return UAV2RayNG, FormatBase64
 	case strings.Contains(ua, "hiddify"):

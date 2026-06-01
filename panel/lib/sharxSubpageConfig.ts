@@ -31,6 +31,7 @@ export type SharxBranding = z.infer<typeof brandingSchema>;
 export const subscriptionApps = [
   "happ",
   "v2raytun",
+  "incy",
   "v2rayng",
   "hiddify",
   "streisand",
@@ -89,6 +90,13 @@ export const APP_CATALOG: Record<SubscriptionApp, AppCatalogEntry> = {
     deepLinkTemplate: "v2raytun://install-sub?url={urlEncoded}",
     supportsEncrypted: true,
     iconUrl: appFaviconUrl("v2raytun.com"),
+  },
+  incy: {
+    label: "INCY",
+    platforms: ["ios", "android", "windows", "macos", "linux"],
+    deepLinkTemplate: "incy://import/{url}",
+    supportsEncrypted: false,
+    iconUrl: appFaviconUrl("incy.app"),
   },
   v2rayng: {
     label: "v2rayNG",
@@ -387,13 +395,67 @@ export function defaultInstallationGroups(): InstallationPlatform[] {
   }));
 }
 
+/** Apps added after initial config save — merged into existing blocks on normalize. */
+const SUBSCRIPTION_APP_ROLLOUT: SubscriptionApp[] = ["incy"];
+
+function newInstallationAppEntry(app: SubscriptionApp): InstallationAppEntry {
+  return {
+    app,
+    enabled: true,
+    label: "",
+    downloadUrl: "",
+    steps: [],
+    deepLinkTemplate: "",
+    useEncrypted: APP_CATALOG[app]?.supportsEncrypted === true,
+  };
+}
+
+function newAppButton(app: SubscriptionApp): AppButton {
+  return {
+    id: genBlockId(),
+    app,
+    enabled: true,
+    label: "",
+    iconUrl: "",
+    platforms: APP_CATALOG[app]?.platforms ?? [],
+    deepLinkTemplate: "",
+    useEncrypted: APP_CATALOG[app]?.supportsEncrypted === true,
+  };
+}
+
+function mergeRolloutAppsIntoInstallationGroup(group: InstallationPlatform): InstallationPlatform {
+  const existing = new Set(group.apps.map((a) => a.app));
+  const additions: InstallationAppEntry[] = [];
+  for (const app of SUBSCRIPTION_APP_ROLLOUT) {
+    if (existing.has(app)) continue;
+    const catalog = APP_CATALOG[app];
+    if (!catalog?.platforms.includes(group.platform)) continue;
+    additions.push(newInstallationAppEntry(app));
+  }
+  if (additions.length === 0) return group;
+  return { ...group, apps: [...group.apps, ...additions] };
+}
+
+function mergeRolloutAppsIntoButtons(buttons: AppButton[]): AppButton[] {
+  const existing = new Set(buttons.map((b) => b.app));
+  let next = buttons;
+  for (const app of SUBSCRIPTION_APP_ROLLOUT) {
+    if (existing.has(app)) continue;
+    next = [...next, newAppButton(app)];
+    existing.add(app);
+  }
+  return next;
+}
+
 /** Ensures the block carries a `groups` array; migrates legacy `platforms[]` on the fly. */
 export function normalizeInstallationGuideBlock(
   block: BlockInstallationGuide,
 ): BlockInstallationGuide {
-  if (block.groups && block.groups.length > 0) return block;
-  if (block.platforms && block.platforms.length > 0) {
-    return {
+  let normalized: BlockInstallationGuide;
+  if (block.groups && block.groups.length > 0) {
+    normalized = block;
+  } else if (block.platforms && block.platforms.length > 0) {
+    normalized = {
       ...block,
       groups: block.platforms.map<InstallationPlatform>((platform) => ({
         platform,
@@ -402,8 +464,13 @@ export function normalizeInstallationGuideBlock(
         apps: defaultAppsForPlatform(platform),
       })),
     };
+  } else {
+    normalized = { ...block, groups: defaultInstallationGroups() };
   }
-  return { ...block, groups: defaultInstallationGroups() };
+  return {
+    ...normalized,
+    groups: normalized.groups.map(mergeRolloutAppsIntoInstallationGroup),
+  };
 }
 
 export const blockLinksListSchema = z.object({
@@ -493,6 +560,7 @@ export function defaultAppButtons(): AppButton[] {
   const defaults: SubscriptionApp[] = [
     "happ",
     "v2raytun",
+    "incy",
     "v2rayng",
     "hiddify",
     "streisand",
@@ -517,9 +585,11 @@ export function defaultAppButtons(): AppButton[] {
  * fly; if both are empty the block renders nothing.
  */
 export function normalizeAddToAppBlock(block: BlockAddToApp): BlockAddToApp {
-  if (block.buttons && block.buttons.length > 0) return block;
-  if (block.apps && block.apps.length > 0) {
-    return {
+  let normalized: BlockAddToApp;
+  if (block.buttons && block.buttons.length > 0) {
+    normalized = block;
+  } else if (block.apps && block.apps.length > 0) {
+    normalized = {
       ...block,
       buttons: block.apps.map<AppButton>((app) => ({
         id: genBlockId(),
@@ -532,8 +602,11 @@ export function normalizeAddToAppBlock(block: BlockAddToApp): BlockAddToApp {
         useEncrypted: APP_CATALOG[app]?.supportsEncrypted === true,
       })),
     };
+  } else {
+    normalized = block;
   }
-  return block;
+  if (!normalized.buttons?.length) return normalized;
+  return { ...normalized, buttons: mergeRolloutAppsIntoButtons(normalized.buttons) };
 }
 
 export const subpageBlockSchema = z.discriminatedUnion("kind", [
@@ -595,6 +668,7 @@ export const appSettingsSchema = z.object({
   presetIcons: presetIconsSchema.optional(),
   happ: perAppHappSettingsSchema.optional(),
   v2raytun: perAppCommonSettingsSchema.optional(),
+  incy: perAppCommonSettingsSchema.optional(),
   v2rayng: perAppCommonSettingsSchema.optional(),
   hiddify: perAppCommonSettingsSchema.optional(),
   streisand: perAppCommonSettingsSchema.optional(),
@@ -643,6 +717,7 @@ export const deepLinksSchema = z.object({
   enabledApps: z.array(z.enum(subscriptionApps)).default([
     "happ",
     "v2raytun",
+    "incy",
     "v2rayng",
     "hiddify",
     "streisand",
@@ -771,6 +846,7 @@ export function defaultAppSettings(): AppSettings {
     presetIcons: { botUrl: "", channelUrl: "", supportUrl: "" },
     happ: { encrypt: false },
     v2raytun: { enabled: true },
+    incy: { enabled: true },
     v2rayng: { enabled: true },
     hiddify: { enabled: true },
     streisand: { enabled: true },
@@ -794,6 +870,7 @@ export function defaultDeepLinks(): DeepLinks {
     enabledApps: [
       "happ",
       "v2raytun",
+      "incy",
       "v2rayng",
       "hiddify",
       "streisand",

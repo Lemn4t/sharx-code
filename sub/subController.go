@@ -88,8 +88,8 @@ func (a *SUBController) initRouter(g *gin.RouterGroup) {
 }
 
 // isAllowedUserAgent checks if the User-Agent is allowed when encryption is enabled.
-// Allows: Happ, v2raytun, or browser (detected by Accept header).
-// For Happ/v2raytun, also requires all HWID fields to be present.
+// Allows: Happ, v2raytun, INCY, or browser (detected by Accept header).
+// For Happ/v2raytun/INCY, also requires all HWID fields to be present.
 func (a *SUBController) isAllowedUserAgent(c *gin.Context) bool {
 	userAgent := strings.ToLower(c.GetHeader("User-Agent"))
 	accept := strings.ToLower(c.GetHeader("Accept"))
@@ -104,11 +104,12 @@ func (a *SUBController) isAllowedUserAgent(c *gin.Context) bool {
 		return true
 	}
 
-	// For Happ or v2raytun, require all HWID fields
 	isHapp := strings.Contains(userAgent, "happ")
 	isV2RayTun := strings.Contains(userAgent, "v2raytun")
+	isIncy := strings.Contains(userAgent, "incy") ||
+		strings.EqualFold(strings.TrimSpace(c.GetHeader("x-client")), "incy")
 
-	if isHapp || isV2RayTun {
+	if isHapp || isV2RayTun || isIncy {
 		// Check for all required HWID fields
 		hwid := c.GetHeader("x-hwid")
 		if hwid == "" {

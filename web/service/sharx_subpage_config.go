@@ -77,6 +77,7 @@ type SharxSubpageAppSettings struct {
 	PresetIcons  *SharxSubpagePresetIcons  `json:"presetIcons,omitempty"`
 	Happ         *SharxSubpagePerAppHapp   `json:"happ,omitempty"`
 	V2RayTun     *SharxSubpagePerAppCommon `json:"v2raytun,omitempty"`
+	Incy         *SharxSubpagePerAppCommon `json:"incy,omitempty"`
 	V2RayNG      *SharxSubpagePerAppCommon `json:"v2rayng,omitempty"`
 	Hiddify      *SharxSubpagePerAppCommon `json:"hiddify,omitempty"`
 	Streisand    *SharxSubpagePerAppCommon `json:"streisand,omitempty"`
@@ -191,6 +192,7 @@ var supportedBlockKinds = map[string]bool{
 var SupportedSubscriptionApps = map[string]bool{
 	"happ":         true,
 	"v2raytun":     true,
+	"incy":         true,
 	"v2rayng":      true,
 	"hiddify":      true,
 	"streisand":    true,
