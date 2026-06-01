@@ -95,7 +95,11 @@ func (s *ClientSessionBlockService) IsSessionIPBlocked(clientId int, ip string) 
 	if err != nil {
 		return false, err
 	}
+	now := time.Now().Unix()
 	for _, r := range rows {
+		if r.ExpiresAt > 0 && r.ExpiresAt <= now {
+			continue
+		}
 		if NormalizeClientIP(r.IP) == n {
 			return true, nil
 		}
@@ -103,15 +107,19 @@ func (s *ClientSessionBlockService) IsSessionIPBlocked(clientId int, ip string) 
 	return false, nil
 }
 
-// ListBlockedSessionIPs returns all blocked IPs for a client (normalized storage).
+// ListBlockedSessionIPs returns active blocked IPs for a client (normalized storage).
 func (s *ClientSessionBlockService) ListBlockedSessionIPs(clientId int) ([]string, error) {
 	db := database.GetDB()
 	var rows []model.ClientBlockedSessionIP
 	if err := db.Where("client_id = ?", clientId).Order("created_at ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
+	now := time.Now().Unix()
 	out := make([]string, 0, len(rows))
 	for _, r := range rows {
+		if r.ExpiresAt > 0 && r.ExpiresAt <= now {
+			continue
+		}
 		if strings.TrimSpace(r.IP) != "" {
 			out = append(out, r.IP)
 		}
@@ -147,6 +155,7 @@ func (s *ClientSessionBlockService) SetSessionIPBlocked(userId, clientId int, ip
 		ClientId:  clientId,
 		IP:        ip,
 		CreatedAt: time.Now().Unix(),
+		ExpiresAt: 0,
 	}
 	if err := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "client_id"}, {Name: "ip"}},
@@ -158,6 +167,73 @@ func (s *ClientSessionBlockService) SetSessionIPBlocked(userId, clientId int, ip
 	kickConntrackAfterSessionBlock(clientId, []string{ip})
 	SyncTelemtAfterClientSessionBlocksChanged(clientId)
 	return nil
+}
+
+// BlockSessionIPInternal adds a session block without user ownership checks (panel jobs).
+// expiresAt 0 means permanent until manual unblock.
+func (s *ClientSessionBlockService) BlockSessionIPInternal(clientId int, ip string, expiresAt int64) error {
+	ip = NormalizeClientIP(ip)
+	if ip == "" {
+		return fmt.Errorf("invalid IP")
+	}
+	cs := ClientService{}
+	cl, err := cs.GetClient(clientId)
+	if err != nil || cl == nil {
+		return fmt.Errorf("client not found")
+	}
+	db := database.GetDB()
+	email := strings.TrimSpace(cl.Name)
+	now := time.Now().Unix()
+	row := model.ClientBlockedSessionIP{
+		ClientId:  clientId,
+		IP:        ip,
+		CreatedAt: now,
+		ExpiresAt: expiresAt,
+	}
+	if err := db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "client_id"}, {Name: "ip"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"expires_at": expiresAt,
+			"created_at": now,
+		}),
+	}).Create(&row).Error; err != nil {
+		return err
+	}
+	(&XrayService{}).ApplySessionIPBlockHotAfterDB(clientId, email, ip, true)
+	kickConntrackAfterSessionBlock(clientId, []string{ip})
+	SyncTelemtAfterClientSessionBlocksChanged(clientId)
+	return nil
+}
+
+// ExpireDueSessionIPBlocks removes expired rows and hot-unblocks routing/subscription.
+func (s *ClientSessionBlockService) ExpireDueSessionIPBlocks() (int, error) {
+	db := database.GetDB()
+	now := time.Now().Unix()
+	var rows []model.ClientBlockedSessionIP
+	if err := db.Where("expires_at > 0 AND expires_at <= ?", now).Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	cs := ClientService{}
+	for _, r := range rows {
+		cl, err := cs.GetClient(r.ClientId)
+		if err != nil || cl == nil {
+			continue
+		}
+		email := strings.TrimSpace(cl.Name)
+		ip := NormalizeClientIP(r.IP)
+		if ip == "" {
+			continue
+		}
+		if err := db.Delete(&model.ClientBlockedSessionIP{}, r.Id).Error; err != nil {
+			continue
+		}
+		(&XrayService{}).ApplySessionIPBlockHotAfterDB(r.ClientId, email, ip, false)
+		SyncTelemtAfterClientSessionBlocksChanged(r.ClientId)
+	}
+	return len(rows), nil
 }
 
 // ErrSessionIPBlocked is returned when subscription is denied due to session IP blocklist.

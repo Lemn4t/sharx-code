@@ -84,6 +84,11 @@ export type AllSetting = {
   nodeHealthCheckIntervalSec: number;
   /** Seconds between GET /health when node is offline/error (until recovery). */
   nodeHealthCheckDegradedIntervalSec: number;
+  ipLimitGlobalEnable: boolean;
+  ipLimitCheckIntervalSec: number;
+  ipLimitBanDurationSec: number;
+  ipLimitEnforcement: string;
+  ipLimitExcessPolicy: string;
   hwidMode: string;
   grafanaLokiUrl: string;
   grafanaVictoriaMetricsUrl: string;
@@ -200,6 +205,11 @@ export function normalizeAllSetting(raw: Record<string, unknown>): AllSetting {
     nodeStatsCollectionIntervalSec: toInt(raw.nodeStatsCollectionIntervalSec, 3),
     nodeHealthCheckIntervalSec: toInt(raw.nodeHealthCheckIntervalSec, 15),
     nodeHealthCheckDegradedIntervalSec: toInt(raw.nodeHealthCheckDegradedIntervalSec, 5),
+    ipLimitGlobalEnable: toBool(raw.ipLimitGlobalEnable !== undefined ? raw.ipLimitGlobalEnable : true),
+    ipLimitCheckIntervalSec: toInt(raw.ipLimitCheckIntervalSec, 30),
+    ipLimitBanDurationSec: toInt(raw.ipLimitBanDurationSec, 3600),
+    ipLimitEnforcement: toStr(raw.ipLimitEnforcement, "drop_and_block"),
+    ipLimitExcessPolicy: toStr(raw.ipLimitExcessPolicy, "newest"),
     hwidMode: toStr(raw.hwidMode, "client_header"),
     grafanaLokiUrl: toStr(raw.grafanaLokiUrl),
     grafanaVictoriaMetricsUrl: toStr(raw.grafanaVictoriaMetricsUrl),

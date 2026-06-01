@@ -546,6 +546,7 @@ type ClientBlockedSessionIP struct {
 	ClientId  int    `json:"clientId" gorm:"column:client_id;index"`
 	IP        string `json:"ip" gorm:"column:ip"`
 	CreatedAt int64  `json:"createdAt" gorm:"column:created_at"`
+	ExpiresAt int64  `json:"expiresAt" gorm:"column:expires_at;default:0"` // 0 = no expiry (manual / permanent)
 }
 
 func (ClientBlockedSessionIP) TableName() string {

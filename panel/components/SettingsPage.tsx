@@ -728,6 +728,99 @@ export function SettingsPage() {
                 </option>
               </SelectNative>
             </Row>
+            <Row
+              label={t("pages.settings.ipLimitGlobalEnable", { defaultValue: "Enable IP limit enforcement" })}
+              hint={t("pages.settings.ipLimitGlobalEnableDesc", {
+                defaultValue: "Background job that enforces per-client concurrent IP limits.",
+              })}
+            >
+              <Switch
+                checked={form.ipLimitGlobalEnable}
+                onChange={(on) => patch("ipLimitGlobalEnable", on)}
+                ariaLabel={t("pages.settings.ipLimitGlobalEnable", { defaultValue: "Enable IP limit enforcement" })}
+              />
+            </Row>
+            {form.ipLimitGlobalEnable ? (
+              <>
+                <Row
+                  label={t("pages.settings.ipLimitCheckInterval", { defaultValue: "Check interval (sec)" })}
+                  hint={t("pages.settings.ipLimitCheckIntervalDesc", {
+                    defaultValue: "How often the panel scans online sessions for IP limit violations (5–600).",
+                  })}
+                >
+                  <Input
+                    type="number"
+                    min={5}
+                    max={600}
+                    className="max-w-[120px]"
+                    value={form.ipLimitCheckIntervalSec}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      patch(
+                        "ipLimitCheckIntervalSec",
+                        Number.isFinite(v) ? Math.min(600, Math.max(5, v)) : 30,
+                      );
+                    }}
+                  />
+                </Row>
+                <Row
+                  label={t("pages.settings.ipLimitBanDuration", { defaultValue: "Ban duration (sec)" })}
+                  hint={t("pages.settings.ipLimitBanDurationDesc", {
+                    defaultValue: "How long excess IPs stay blocked in subscription routing. 0 = permanent until manual unblock.",
+                  })}
+                >
+                  <Input
+                    type="number"
+                    min={0}
+                    max={2592000}
+                    className="max-w-[120px]"
+                    value={form.ipLimitBanDurationSec}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      patch(
+                        "ipLimitBanDurationSec",
+                        Number.isFinite(v) ? Math.min(2592000, Math.max(0, v)) : 3600,
+                      );
+                    }}
+                  />
+                </Row>
+                <Row
+                  label={t("pages.settings.ipLimitEnforcement", { defaultValue: "Enforcement mode" })}
+                  hint={t("pages.settings.ipLimitEnforcementDesc", {
+                    defaultValue: "Drop closes active connections; block denies subscription/routing for the IP; both applies drop and block.",
+                  })}
+                >
+                  <SelectNative
+                    value={form.ipLimitEnforcement}
+                    onChange={(e) => patch("ipLimitEnforcement", e.target.value)}
+                  >
+                    <option value="drop">{t("pages.settings.ipLimitEnforcement.drop", { defaultValue: "Drop connections only" })}</option>
+                    <option value="block">{t("pages.settings.ipLimitEnforcement.block", { defaultValue: "Block IP in subscription" })}</option>
+                    <option value="drop_and_block">
+                      {t("pages.settings.ipLimitEnforcement.dropAndBlock", { defaultValue: "Drop and block" })}
+                    </option>
+                  </SelectNative>
+                </Row>
+                <Row
+                  label={t("pages.settings.ipLimitExcessPolicy", { defaultValue: "Excess IP policy" })}
+                  hint={t("pages.settings.ipLimitExcessPolicyDesc", {
+                    defaultValue: "Which connections to target when the client exceeds the concurrent IP limit.",
+                  })}
+                >
+                  <SelectNative
+                    value={form.ipLimitExcessPolicy}
+                    onChange={(e) => patch("ipLimitExcessPolicy", e.target.value)}
+                  >
+                    <option value="newest">
+                      {t("pages.settings.ipLimitExcessPolicy.newest", { defaultValue: "Kick newest IPs" })}
+                    </option>
+                    <option value="oldest">
+                      {t("pages.settings.ipLimitExcessPolicy.oldest", { defaultValue: "Kick oldest IPs" })}
+                    </option>
+                  </SelectNative>
+                </Row>
+              </>
+            ) : null}
           </SettingsSection>
         </SettingsGrid>
       ) : null}

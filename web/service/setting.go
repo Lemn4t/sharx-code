@@ -124,6 +124,12 @@ var defaultValueMap = map[string]string{
 	"nodeHealthCheckDegradedIntervalSec": "5",
 	// HWID tracking mode
 	"hwidMode": "client_header", // "off" = disabled, "client_header" = use x-hwid header (default), "legacy_fingerprint" = deprecated fingerprint-based (deprecated)
+	// Client IP limit (panel job for clients with ip_limit_enabled)
+	"ipLimitGlobalEnable":     "true",
+	"ipLimitCheckIntervalSec": "30",
+	"ipLimitBanDurationSec":   "3600",
+	"ipLimitEnforcement":      "drop_and_block",
+	"ipLimitExcessPolicy":     "newest",
 	// Grafana integration
 	"grafanaLokiUrl":            "",
 	"grafanaVictoriaMetricsUrl": "",

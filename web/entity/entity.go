@@ -122,6 +122,13 @@ type AllSetting struct {
 	// "legacy_fingerprint" = deprecated fingerprint-based HWID generation (deprecated, for backward compatibility only)
 	HwidMode string `json:"hwidMode" form:"hwidMode"` // HWID tracking mode
 
+	// Client IP limit (concurrent unique source IPs per client with ip_limit_enabled)
+	IPLimitGlobalEnable       bool   `json:"ipLimitGlobalEnable" form:"ipLimitGlobalEnable"`             // Run IP limit enforcement job
+	IPLimitCheckIntervalSec   int    `json:"ipLimitCheckIntervalSec" form:"ipLimitCheckIntervalSec"`     // Seconds between checks (5–600)
+	IPLimitBanDurationSec     int    `json:"ipLimitBanDurationSec" form:"ipLimitBanDurationSec"`           // Session block TTL; 0 = permanent until manual unblock
+	IPLimitEnforcement        string `json:"ipLimitEnforcement" form:"ipLimitEnforcement"`               // drop | block | drop_and_block
+	IPLimitExcessPolicy       string `json:"ipLimitExcessPolicy" form:"ipLimitExcessPolicy"`             // newest | oldest — which excess IPs to target
+
 	// Grafana integration settings
 	GrafanaLokiUrl            string `json:"grafanaLokiUrl" form:"grafanaLokiUrl"`                       // Loki API URL (e.g., http://localhost:3100/loki/api/v1/push)
 	GrafanaVictoriaMetricsUrl string `json:"grafanaVictoriaMetricsUrl" form:"grafanaVictoriaMetricsUrl"` // VictoriaMetrics API URL (e.g., http://localhost:8428/api/v1/import/prometheus)
@@ -246,6 +253,30 @@ func (s *AllSetting) CheckValid() error {
 		return common.NewError("nodeHealthCheckIntervalSec must be >= nodeHealthCheckDegradedIntervalSec (online polling interval should not be shorter than degraded)")
 	}
 
+	if err := validateIPLimitSettings(s.IPLimitCheckIntervalSec, s.IPLimitBanDurationSec, s.IPLimitEnforcement, s.IPLimitExcessPolicy); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateIPLimitSettings(checkSec, banSec int, enforcement, excessPolicy string) error {
+	if checkSec != 0 && (checkSec < 5 || checkSec > 600) {
+		return common.NewErrorf("ipLimitCheckIntervalSec must be between 5 and 600 seconds")
+	}
+	if banSec < 0 || banSec > 86400*30 {
+		return common.NewErrorf("ipLimitBanDurationSec must be between 0 and 2592000 (30 days); 0 = permanent block")
+	}
+	switch strings.ToLower(strings.TrimSpace(enforcement)) {
+	case "", "drop", "block", "drop_and_block":
+	default:
+		return common.NewErrorf("invalid ipLimitEnforcement: %s", enforcement)
+	}
+	switch strings.ToLower(strings.TrimSpace(excessPolicy)) {
+	case "", "newest", "oldest":
+	default:
+		return common.NewErrorf("invalid ipLimitExcessPolicy: %s", excessPolicy)
+	}
 	return nil
 }
 
