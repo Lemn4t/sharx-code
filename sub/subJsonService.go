@@ -374,25 +374,11 @@ func (s *SubJsonService) removeAcceptProxy(setting any) map[string]any {
 }
 
 func (s *SubJsonService) tlsData(tData map[string]any) map[string]any {
-	tlsData := make(map[string]any, 1)
-	tlsClientSettings, _ := tData["settings"].(map[string]any)
-
-	tlsData["serverName"] = tData["serverName"]
-	tlsData["alpn"] = tData["alpn"]
-	// Panel inbound TLS (e.g. Hysteria QUIC) stores allowInsecure on tlsSettings root; legacy configs used settings.allowInsecure.
-	if v, ok := tData["allowInsecure"].(bool); ok && v {
-		tlsData["allowInsecure"] = true
-	} else if tlsClientSettings != nil {
-		if allowInsecure, ok := tlsClientSettings["allowInsecure"].(bool); ok {
-			tlsData["allowInsecure"] = allowInsecure
-		}
+	if tData == nil {
+		return map[string]any{}
 	}
-	if tlsClientSettings != nil {
-		if fingerprint, ok := tlsClientSettings["fingerprint"].(string); ok {
-			tlsData["fingerprint"] = fingerprint
-		}
-	}
-	return tlsData
+	// Copy panel inbound tlsSettings into client outbound form; Xray >= 2026-06-01 rejects allowInsecure.
+	return xray.SanitizeClientTLSSettings(tData)
 }
 
 func (s *SubJsonService) realityData(rData map[string]any) map[string]any {
@@ -602,6 +588,5 @@ type ServerSetting struct {
 	Level    int    `json:"level"`
 	Address  string `json:"address"`
 	Port     int    `json:"port"`
-	Flow     string `json:"flow,omitempty"`
 	Method   string `json:"method,omitempty"`
 }

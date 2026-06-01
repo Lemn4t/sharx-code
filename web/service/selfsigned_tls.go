@@ -11,6 +11,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/konstpic/sharx-code/v2/xray"
 )
 
 // SelfSignedTLSParams configures a self-signed server certificate for TLS (e.g. Hysteria over QUIC).
@@ -23,8 +25,9 @@ type SelfSignedTLSParams struct {
 
 // SelfSignedTLSPEM is PEM-encoded certificate and private key for inbound TLS.
 type SelfSignedTLSPEM struct {
-	CertPEM string `json:"certPem"`
-	KeyPEM  string `json:"keyPem"`
+	CertPEM              string `json:"certPem"`
+	KeyPEM               string `json:"keyPem"`
+	PinnedPeerCertSha256 string `json:"pinnedPeerCertSha256"`
 }
 
 // GenerateSelfSignedServerTLS creates an RSA-2048 key and a self-signed X.509 server certificate.
@@ -119,9 +122,14 @@ func GenerateSelfSignedServerTLS(p SelfSignedTLSParams) (*SelfSignedTLSPEM, erro
 	}
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	pin, err := xray.LeafCertSHA256FromPEM(string(certPEM))
+	if err != nil {
+		return nil, fmt.Errorf("compute certificate pin: %w", err)
+	}
 
 	return &SelfSignedTLSPEM{
-		CertPEM: string(certPEM),
-		KeyPEM:  string(keyPEM),
+		CertPEM:              string(certPEM),
+		KeyPEM:               string(keyPEM),
+		PinnedPeerCertSha256: pin,
 	}, nil
 }

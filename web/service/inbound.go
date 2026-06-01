@@ -2252,7 +2252,7 @@ func (s *InboundService) ResetClientTraffic(id int, clientEmail string) (bool, e
 						}
 						cipher = oldSettings["method"].(string)
 					}
-					flowVal := client.Flow
+					flowVal := ""
 					if model.NormalizeProtocol(inbound.Protocol) == model.VLESS {
 						flowVal = VLESSFlowFromInboundSettings(inbound.Settings)
 					}
@@ -2260,9 +2260,11 @@ func (s *InboundService) ResetClientTraffic(id int, clientEmail string) (bool, e
 						"email":    client.Email,
 						"id":       client.ID,
 						"security": client.Security,
-						"flow":     flowVal,
 						"password": client.Password,
 						"cipher":   cipher,
+					}
+					if flowVal != "" {
+						user["flow"] = flowVal
 					}
 					if inbound.Protocol == model.Hysteria || inbound.Protocol == model.Hysteria2 {
 						user = map[string]any{"email": client.Email, "auth": client.Password}

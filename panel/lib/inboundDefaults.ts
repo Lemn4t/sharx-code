@@ -846,6 +846,8 @@ function parseHysteriaTlsFormFields(
   if (typeof tls.serverName === "string") base.tlsServerName = tls.serverName;
   base.tlsAlpn = alpnToString(tls.alpn);
   if (tls.allowInsecure === true) base.tlsAllowInsecure = true;
+  const pinnedFromTls = tlsPinnedSha256FromTls(tls);
+  if (pinnedFromTls) base.tlsPinnedSha256 = pinnedFromTls;
   const mv = tls.minVersion;
   if (mv === "1.3" || mv === "1.2") base.tlsMinVersion = mv;
   const maxV = tls.maxVersion;
@@ -905,7 +907,6 @@ function buildHysteriaStreamSettingsFromForm(
     disableSystemRoot: state.tlsDisableSystemRoot,
     enableSessionResumption: state.tlsEnableSessionResumption,
     certificates,
-    allowInsecure: state.tlsAllowInsecure,
     echServerKeys: state.tlsEchServerKeys.trim(),
     echForceQuery: state.tlsEchForceQuery.trim() || "none",
     settings: {
@@ -916,6 +917,7 @@ function buildHysteriaStreamSettingsFromForm(
   if (state.tlsMaxVersion === "1.2" || state.tlsMaxVersion === "1.3") {
     tlsSettings.maxVersion = state.tlsMaxVersion;
   }
+  applyTlsPinnedSha256ToSettings(tlsSettings, state.tlsPinnedSha256);
 
   const out: Record<string, unknown> = {
     network: "hysteria",
@@ -976,6 +978,30 @@ const isQuicHeaderType = isObfuscationHeaderType;
 function alpnToString(alpn: unknown): string {
   if (!Array.isArray(alpn)) return "http/1.1";
   return alpn.filter((x) => typeof x === "string").join(", ");
+}
+
+/** Read pinnedPeerCertSha256 from Xray tlsSettings (supports legacy field names). */
+function tlsPinnedSha256FromTls(tls: Record<string, unknown>): string {
+  const pinned =
+    tls.pinnedPeerCertSha256 ?? tls.pinnedPeerCertificateChainSha256;
+  if (Array.isArray(pinned)) {
+    return pinned.filter((x) => typeof x === "string").join("\n");
+  }
+  if (typeof pinned === "string" && pinned.trim()) return pinned.trim();
+  return "";
+}
+
+function applyTlsPinnedSha256ToSettings(
+  tlsSettings: Record<string, unknown>,
+  pinnedLines: string,
+): void {
+  const pinned = pinnedLines
+    .split(/[,\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (pinned.length > 0) {
+    tlsSettings.pinnedPeerCertSha256 = pinned.join(",");
+  }
 }
 
 function parseHeaderType(tcp: Record<string, unknown> | undefined): "none" | "http" {
@@ -1304,12 +1330,8 @@ export function parseStreamSettingsToForm(
           base.tlsOcspStapling = tls.ocspStapling;
         }
         if (tls.verifyClientCertificate === true) base.tlsVerifyClientCertificate = true;
-        const pinned = tls.pinnedPeerCertificateChainSha256;
-        if (Array.isArray(pinned)) {
-          base.tlsPinnedSha256 = pinned.filter((x) => typeof x === "string").join("\n");
-        } else if (typeof pinned === "string" && pinned.trim()) {
-          base.tlsPinnedSha256 = pinned;
-        }
+        const pinnedFromTls = tlsPinnedSha256FromTls(tls);
+        if (pinnedFromTls) base.tlsPinnedSha256 = pinnedFromTls;
         const certs = tls.certificates;
         if (Array.isArray(certs) && certs.length > 0 && typeof certs[0] === "object" && certs[0] !== null) {
           const c0 = certs[0] as Record<string, unknown>;
@@ -1520,7 +1542,6 @@ export function buildStreamSettingsFromForm(
     const tlsSettings: Record<string, unknown> = {
       serverName: state.tlsServerName.trim(),
       alpn: alpn.length > 0 ? alpn : ["http/1.1"],
-      allowInsecure: state.tlsAllowInsecure,
       minVersion: state.tlsMinVersion,
       certificates,
       cipherSuites: state.tlsCipherSuites.trim(),
@@ -1528,11 +1549,7 @@ export function buildStreamSettingsFromForm(
     };
     if (state.tlsOcspStapling > 0) tlsSettings.ocspStapling = state.tlsOcspStapling;
     if (state.tlsVerifyClientCertificate) tlsSettings.verifyClientCertificate = true;
-    const pinned = state.tlsPinnedSha256
-      .split(/[,\n]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (pinned.length > 0) tlsSettings.pinnedPeerCertificateChainSha256 = pinned;
+    applyTlsPinnedSha256ToSettings(tlsSettings, state.tlsPinnedSha256);
     out.tlsSettings = tlsSettings;
   }
 

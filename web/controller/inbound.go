@@ -13,6 +13,7 @@ import (
 	"github.com/konstpic/sharx-code/v2/web/service"
 	"github.com/konstpic/sharx-code/v2/web/session"
 	"github.com/konstpic/sharx-code/v2/web/websocket"
+	"github.com/konstpic/sharx-code/v2/xray"
 
 	"github.com/gin-gonic/gin"
 )
@@ -108,6 +109,7 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.GET("/getClientTrafficsById/:id", a.getClientTrafficsById)
 
 	g.POST("/generateSelfSignedTls", a.generateSelfSignedTls)
+	g.POST("/computeTlsPin", a.computeTlsPin)
 
 	g.POST("/add", a.addInbound)
 	g.POST("/del/:id", a.delInbound)
@@ -246,6 +248,39 @@ func (a *InboundController) generateSelfSignedTls(c *gin.Context) {
 		return
 	}
 	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.generateSelfSignedSuccess"), out, nil)
+}
+
+// computeTlsPin returns pinnedPeerCertSha256 for a PEM block or certificate file on the panel host.
+func (a *InboundController) computeTlsPin(c *gin.Context) {
+	var body struct {
+		CertPEM         string `json:"certPem"`
+		CertificateFile string `json:"certificateFile"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	pemData := strings.TrimSpace(body.CertPEM)
+	certFile := strings.TrimSpace(body.CertificateFile)
+	if pemData == "" && certFile == "" {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.tlsPinNeedSource"), fmt.Errorf("certPem or certificateFile required"))
+		return
+	}
+	var pin string
+	var err error
+	if pemData != "" {
+		pin, err = xray.LeafCertSHA256FromPEM(pemData)
+	} else {
+		pin, err = xray.LeafCertSHA256FromFile(certFile)
+	}
+	if err != nil {
+		logger.Errorf("computeTlsPin: %v", err)
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.tlsPinFailed"), err)
+		return
+	}
+	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.tlsPinSuccess"), gin.H{
+		"pinnedPeerCertSha256": pin,
+	}, nil)
 }
 
 // getInbounds retrieves the list of inbounds for the logged-in user.

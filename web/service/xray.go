@@ -257,6 +257,7 @@ func ApplyPanelInboundTransformsForXray(inbound *model.Inbound) error {
 		}
 
 		var finalClients []any
+		proto := model.NormalizeProtocol(inbound.Protocol)
 		for _, client := range clients {
 			c := client.(map[string]any)
 			if c["enable"] != nil {
@@ -271,6 +272,9 @@ func ApplyPanelInboundTransformsForXray(inbound *model.Inbound) error {
 				if c["flow"] == "xtls-rprx-vision-udp443" {
 					c["flow"] = "xtls-rprx-vision"
 				}
+			}
+			if proto != model.VLESS {
+				delete(c, "flow")
 			}
 			if model.IsHysteria(inbound.Protocol) {
 				normalizeHysteriaClientAuth(c)
@@ -294,7 +298,7 @@ func ApplyPanelInboundTransformsForXray(inbound *model.Inbound) error {
 		realitySettings, ok2 := stream["realitySettings"].(map[string]any)
 		if ok1 || ok2 {
 			if ok1 {
-				delete(tlsSettings, "settings")
+				stream["tlsSettings"] = xray.SanitizeClientTLSSettings(tlsSettings)
 			} else if ok2 {
 				delete(realitySettings, "settings")
 			}
@@ -685,6 +689,7 @@ func (s *XrayService) buildNodeWorkerConfigJSON(node *model.Node, inbounds []*mo
 			}
 
 			var final_clients []any
+			proto := model.NormalizeProtocol(inbound.Protocol)
 			for _, client := range clients {
 				c := client.(map[string]any)
 				if c["enable"] != nil {
@@ -699,6 +704,9 @@ func (s *XrayService) buildNodeWorkerConfigJSON(node *model.Node, inbounds []*mo
 					if c["flow"] == "xtls-rprx-vision-udp443" {
 						c["flow"] = "xtls-rprx-vision"
 					}
+				}
+				if proto != model.VLESS {
+					delete(c, "flow")
 				}
 				if model.IsHysteria(inbound.Protocol) {
 					normalizeHysteriaClientAuth(c)
@@ -718,7 +726,7 @@ func (s *XrayService) buildNodeWorkerConfigJSON(node *model.Node, inbounds []*mo
 			realitySettings, ok2 := stream["realitySettings"].(map[string]any)
 			if ok1 || ok2 {
 				if ok1 {
-					delete(tlsSettings, "settings")
+					stream["tlsSettings"] = xray.SanitizeClientTLSSettings(tlsSettings)
 				} else if ok2 {
 					delete(realitySettings, "settings")
 				}

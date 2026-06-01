@@ -72,7 +72,14 @@ function tlsSettingsSchema(d: TLike): object {
       alpn: { type: "array", items: { type: "string" } },
       minVersion: { type: "string" },
       maxVersion: { type: "string" },
-      allowInsecure: { type: "boolean" },
+      pinnedPeerCertSha256: {
+        type: "string",
+        description: D(
+          d,
+          "pages.xray.jsonSchema.stream.tls.pinnedPeerCertSha256",
+          "SHA-256 certificate pin(s), comma-separated. Replaces deprecated allowInsecure.",
+        ),
+      },
       certificates: { type: "array" },
       disableSystemRoot: { type: "boolean" },
     },

@@ -1907,10 +1907,6 @@ func (s *SubService) genTrojanLinkWithClient(inbound *model.Inbound, client *mod
 			}
 			params["spx"] = "/" + random.Seq(15)
 		}
-
-		if (streamNetwork == "tcp" || streamNetwork == "xhttp") && len(client.Flow) > 0 {
-			params["flow"] = client.Flow
-		}
 	}
 
 	if security != "tls" && security != "reality" {
@@ -2126,10 +2122,6 @@ func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string 
 				}
 			}
 			params["spx"] = "/" + random.Seq(15)
-		}
-
-		if (streamNetwork == "tcp" || streamNetwork == "xhttp") && len(clients[clientIndex].Flow) > 0 {
-			params["flow"] = clients[clientIndex].Flow
 		}
 	}
 

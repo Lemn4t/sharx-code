@@ -462,12 +462,17 @@ function OutboundSettingsBody({
                 />
               </div>
               <div className="flex items-end gap-2 sm:col-span-2">
-                <CheckboxField
-                  className="!items-center !text-xs"
-                  label={t("pages.xray.outbound.tlsAllowInsecure", { defaultValue: "allowInsecure" })}
-                  checked={Boolean(tls.allowInsecure)}
+                <label className="text-xs text-[var(--fg-muted)]">
+                  {t("pages.xray.outbound.tlsPinnedSha256", {
+                    defaultValue: "pinnedPeerCertSha256",
+                  })}
+                </label>
+                <Input
+                  className="mt-1 w-full font-mono text-xs"
+                  value={String(tls.pinnedPeerCertSha256 ?? "")}
                   disabled={readOnly}
-                  onChange={(e) => patchTls({ allowInsecure: e.target.checked })}
+                  placeholder="e8e2d387fdbffeb3…"
+                  onChange={(e) => patchTls({ pinnedPeerCertSha256: e.target.value })}
                 />
               </div>
             </div>
