@@ -32,6 +32,7 @@ import (
 	nodeLogs "github.com/konstpic/sharx-code/v2/node/logs"
 	"github.com/konstpic/sharx-code/v2/node/telemt"
 	"github.com/konstpic/sharx-code/v2/node/xray"
+	telemtinstall "github.com/konstpic/sharx-code/v2/telemt/install"
 	"github.com/konstpic/sharx-code/v2/util/dockerupdater"
 	"github.com/konstpic/sharx-code/v2/util/pairing_outbound"
 )
@@ -151,6 +152,7 @@ func (s *Server) Start() error {
 		api.POST("/reload", s.reload)
 		api.POST("/force-reload", s.forceReload)
 		api.POST("/install-xray/:version", s.installXray)
+		api.POST("/install-telemt/:version", s.installTelemt)
 		api.GET("/status", s.status)
 		api.GET("/stats", s.stats)
 		api.GET("/user-online-sessions", s.userOnlineSessions)
@@ -308,6 +310,7 @@ func (s *Server) health(c *gin.Context) {
 		"xrayUptime":    st["uptime"],
 		"telemtRunning": tCount > 0,
 		"telemtCount":   tCount,
+		"telemtVersion": telemtinstall.ReadVersion(""),
 	})
 }
 
@@ -511,6 +514,7 @@ func (s *Server) status(c *gin.Context) {
 	}
 	status["telemtRunning"] = tCount > 0
 	status["telemtCount"] = tCount
+	status["telemtVersion"] = telemtinstall.ReadVersion("")
 	status["sharxVersion"] = config.GetVersion()
 	for k, v := range hostMetricsForStatusJSON() {
 		status[k] = v
@@ -736,6 +740,34 @@ func (s *Server) installXray(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": fmt.Sprintf("Xray version %s installed successfully", version),
+		"version": version,
+	})
+}
+
+// installTelemt installs or updates Telemt to the specified version.
+func (s *Server) installTelemt(c *gin.Context) {
+	version := c.Param("version")
+	if version == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Version parameter is required"})
+		return
+	}
+	if strings.HasPrefix(version, "v") {
+		version = version[1:]
+	}
+	if s.telemtManager == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Telemt manager not configured"})
+		return
+	}
+
+	logger.Infof("Installing Telemt version %s", version)
+	if err := s.telemtManager.InstallVersion(version); err != nil {
+		logger.Errorf("Failed to install Telemt version %s: %v", version, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("Telemt version %s installed successfully", version),
 		"version": version,
 	})
 }

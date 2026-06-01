@@ -310,6 +310,11 @@ func (s *NodeService) SetNodeWorkerVersion(id int, version string) error {
 	return database.GetDB().Model(&model.Node{}).Where("id = ?", id).Update("worker_version", version).Error
 }
 
+// SetNodeTelemtVersion persists the cached Telemt version string from the worker.
+func (s *NodeService) SetNodeTelemtVersion(id int, version string) error {
+	return database.GetDB().Model(&model.Node{}).Where("id = ?", id).Update("telemt_version", version).Error
+}
+
 // SetNodeTelemtState persists worker Telemt sidecar state (running | stopped | unknown).
 func (s *NodeService) SetNodeTelemtState(id int, state string) error {
 	st := strings.TrimSpace(strings.ToLower(state))
@@ -393,6 +398,21 @@ func extractNodeWorkerVersion(status map[string]interface{}) string {
 	return ""
 }
 
+func extractNodeTelemtVersion(status map[string]interface{}) string {
+	if status == nil {
+		return ""
+	}
+	v, ok := status["telemtVersion"].(string)
+	if !ok {
+		return ""
+	}
+	v = strings.TrimSpace(v)
+	if v == "" || strings.EqualFold(v, "unknown") {
+		return ""
+	}
+	return v
+}
+
 // RefreshNodeXrayStateFromWorker sets xray_state (and caches xray_version, worker_version) from GET /api/v1/status on the worker.
 func (s *NodeService) RefreshNodeXrayStateFromWorker(node *model.Node) error {
 	if node == nil {
@@ -437,20 +457,25 @@ func (s *NodeService) RefreshNodeTelemtStateFromWorker(node *model.Node) error {
 		return nil
 	}
 	if !node.Enable {
+		_ = s.SetNodeTelemtVersion(node.Id, "")
 		return s.SetNodeTelemtState(node.Id, model.NodeTelemtStopped)
 	}
 	st, err := s.GetNodeStatus(node)
 	if err != nil {
 		return s.SetNodeTelemtState(node.Id, model.NodeTelemtUnknown)
 	}
+	telemtVersion := extractNodeTelemtVersion(st)
 	_, hasTR := st["telemtRunning"]
 	_, hasTC := st["telemtCount"]
 	if !hasTR && !hasTC {
+		_ = s.SetNodeTelemtVersion(node.Id, telemtVersion)
 		return s.SetNodeTelemtState(node.Id, model.NodeTelemtUnknown)
 	}
 	if statusMapTelemtRunning(st) {
+		_ = s.SetNodeTelemtVersion(node.Id, telemtVersion)
 		return s.SetNodeTelemtState(node.Id, model.NodeTelemtRunning)
 	}
+	_ = s.SetNodeTelemtVersion(node.Id, telemtVersion)
 	return s.SetNodeTelemtState(node.Id, model.NodeTelemtStopped)
 }
 
@@ -3141,6 +3166,54 @@ func (s *NodeService) InstallXrayVersion(node *model.Node, version string) error
 		return fmt.Errorf("node returned status %d: %s", resp.StatusCode, string(body))
 	}
 
+	return nil
+}
+
+// InstallTelemtVersion installs a specific Telemt version on a node.
+func (s *NodeService) InstallTelemtVersion(node *model.Node, version string) error {
+	client, err := s.createHTTPClient(node, 300*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+
+	if strings.HasPrefix(version, "v") {
+		version = version[1:]
+	}
+
+	url := fmt.Sprintf("%s/api/v1/install-telemt/%s", nodeRequestBaseURL(node), version)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if err := s.setNodeAuthHeader(node, req); err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		healthURL := fmt.Sprintf("%s/health", nodeRequestBaseURL(node))
+		healthResp, healthErr := client.Get(healthURL)
+		if healthErr == nil {
+			healthResp.Body.Close()
+			if healthResp.StatusCode == http.StatusOK {
+				return &ErrNodeNeedsReregistration{NodeName: node.Name}
+			}
+		}
+		return fmt.Errorf("invalid API key")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("node returned status code %d: %s", resp.StatusCode, string(body))
+	}
+
+	_ = s.RefreshNodeTelemtStateFromWorker(node)
 	return nil
 }
 

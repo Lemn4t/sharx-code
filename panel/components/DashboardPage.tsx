@@ -89,7 +89,7 @@ type StatusData = {
   xray: { state: string; errorMsg: string; version: string };
   nodes?: { online: number; total: number };
   nodesXray?: { total: number; running: number; stopped: number; error: number; unknown: number };
-  telemt?: { state: string; count: number; errorMsg?: string };
+  telemt?: { state: string; count: number; errorMsg?: string; version?: string };
   nodesTelemt?: { total: number; running: number; stopped: number; unknown: number };
   database: {
     size: number;
@@ -579,8 +579,11 @@ export function DashboardPage() {
   const [multi, setMulti] = useState(false);
   const [ipv6Enabled, setIpv6Enabled] = useState(false);
   const [verOpen, setVerOpen] = useState(false);
-  const [verList, setVerList] = useState<string[]>([]);
+  const [verTab, setVerTab] = useState<"xray" | "telemt">("xray");
+  const [verListXray, setVerListXray] = useState<string[]>([]);
+  const [verListTelemt, setVerListTelemt] = useState<string[]>([]);
   const [pendingVersion, setPendingVersion] = useState<string | null>(null);
+  const [pendingCore, setPendingCore] = useState<"xray" | "telemt">("xray");
   const [versionInstalling, setVersionInstalling] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
@@ -994,11 +997,17 @@ export function DashboardPage() {
   };
   const openVer = async () => {
     setSpin(true);
-    const r = await getJson<string[]>(panel("api/server/getXrayVersion"));
-    setSpin(false);
-    if (r.success && r.obj) {
-      setVerList(r.obj);
+    try {
+      const [xr, tm] = await Promise.all([
+        getJson<string[]>(panel("api/server/getXrayVersion")),
+        getJson<string[]>(panel("api/server/getTelemtVersion")),
+      ]);
+      if (xr.success && xr.obj) setVerListXray(xr.obj);
+      if (tm.success && tm.obj) setVerListTelemt(tm.obj);
+      setVerTab("xray");
       setVerOpen(true);
+    } finally {
+      setSpin(false);
     }
   };
 
@@ -1007,16 +1016,34 @@ export function DashboardPage() {
     setVersionInstalling(true);
     setSpin(true);
     try {
-      await postJson(panel(`api/server/installXray/${pendingVersion}`));
-      if (multi && nodes.length) {
-        const ids = nodes.map((n) => n.id);
-        await postJson(
-          panel(`api/server/installXrayOnNodes/${pendingVersion}`),
-          { nodeIds: ids },
-          true
-        );
+      if (pendingCore === "xray") {
+        await postJson(panel(`api/server/installXray/${pendingVersion}`));
+        if (multi && nodes.length) {
+          const ids = nodes.map((n) => n.id);
+          await postJson(
+            panel(`api/server/installXrayOnNodes/${pendingVersion}`),
+            { nodeIds: ids },
+            true,
+          );
+        }
+      } else {
+        if (multi) {
+          if (!nodes.length) {
+            toast.error(t("pages.index.nodesCoresNoEnabled"));
+            return;
+          }
+          const ids = nodes.map((n) => n.id);
+          await postJson(
+            panel(`api/server/installTelemtOnNodes/${pendingVersion}`),
+            { nodeIds: ids },
+            true,
+          );
+        } else {
+          await postJson(panel(`api/server/installTelemt/${pendingVersion}`));
+        }
       }
       toast.success(t("success"));
+      await pull();
     } catch {
       toast.error(t("fail"));
     } finally {
@@ -1359,6 +1386,13 @@ export function DashboardPage() {
                   {st.telemt.errorMsg}
                 </p>
               ) : null}
+              {!multi ? (
+                <p className="mt-1 line-clamp-2 text-[10px] text-[var(--fg-muted)] sm:text-xs">
+                  {t("pages.index.telemtVersionLine", {
+                    version: st.telemt?.version || "—",
+                  })}
+                </p>
+              ) : null}
               <div className="mt-2.5 flex flex-wrap justify-end gap-0 border-t border-[var(--border)]/80 pt-2">
                 {!multi ? (
                   <IconButton
@@ -1379,7 +1413,7 @@ export function DashboardPage() {
                     </IconButton>
                   </>
                 ) : null}
-                <IconButton label={t("pages.index.xraySwitch")} onClick={openVer}>
+                <IconButton label={t("pages.index.coreVersionSwitch")} onClick={openVer}>
                   <Wrench size={14} />
                 </IconButton>
               </div>
@@ -1725,14 +1759,41 @@ export function DashboardPage() {
         </Reveal>
         )}
 
-      <Modal open={verOpen} onClose={() => setVerOpen(false)} title={t("pages.index.xraySwitch")} width={640}>
+      <Modal
+        open={verOpen}
+        onClose={() => setVerOpen(false)}
+        title={t("pages.index.coreVersionSwitch")}
+        width={640}
+      >
+        <div className="mb-4 flex gap-2 border-b border-[var(--border)] pb-3">
+          <Button
+            type="button"
+            variant={verTab === "xray" ? "primary" : "secondary"}
+            onClick={() => setVerTab("xray")}
+          >
+            {t("pages.index.versionTabXray")}
+          </Button>
+          <Button
+            type="button"
+            variant={verTab === "telemt" ? "primary" : "secondary"}
+            onClick={() => setVerTab("telemt")}
+          >
+            {t("pages.index.versionTabTelemt")}
+          </Button>
+        </div>
+        <p className="mb-3 text-xs text-[var(--fg-muted)]">
+          {verTab === "xray"
+            ? t("pages.index.xraySwitchClick")
+            : t("pages.index.telemtSwitchClick")}
+        </p>
         <ul className="list-none space-y-1">
-          {verList.map((v) => (
+          {(verTab === "xray" ? verListXray : verListTelemt).map((v) => (
             <li key={v}>
               <button
                 type="button"
                 className="text-left text-sm font-medium text-[var(--accent)] hover:underline"
                 onClick={() => {
+                  setPendingCore(verTab);
                   setPendingVersion(v);
                   setVerOpen(false);
                 }}
@@ -2036,10 +2097,17 @@ export function DashboardPage() {
 
       <ConfirmDialog
         open={pendingVersion != null}
-        title={t("pages.index.xraySwitchVersionDialog")}
+        title={
+          pendingCore === "telemt"
+            ? t("pages.index.telemtSwitchVersionDialog")
+            : t("pages.index.xraySwitchVersionDialog")
+        }
         description={
           pendingVersion
-            ? t("pages.index.xraySwitchVersionDialogDesc").replace("#version#", pendingVersion)
+            ? (pendingCore === "telemt"
+                ? t("pages.index.telemtSwitchVersionDialogDesc")
+                : t("pages.index.xraySwitchVersionDialogDesc")
+              ).replace("#version#", pendingVersion)
             : undefined
         }
         confirmLabel={t("confirm")}

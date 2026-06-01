@@ -289,7 +289,8 @@ type Node struct {
 	XrayState    string `json:"xrayState" gorm:"column:xray_state;default:unknown"`                      // running | stopped | error | unknown (worker Xray)
 	XrayVersion  string `json:"xrayVersion" gorm:"column:xray_version;default:''"`                       // cached Xray version from worker (e.g. "26.5.3"), empty when unknown
 	WorkerVersion string `json:"workerVersion" gorm:"column:worker_version;default:''"`                     // cached SharX worker build/version from node API (sharxVersion)
-	TelemtState  string `json:"telemtState" gorm:"column:telemt_state;default:unknown"`                  // running | stopped | unknown (worker Telemt sidecars)
+	TelemtState   string `json:"telemtState" gorm:"column:telemt_state;default:unknown"`                 // running | stopped | unknown (worker Telemt sidecars)
+	TelemtVersion string `json:"telemtVersion" gorm:"column:telemt_version;default:''"`                  // cached Telemt version from worker (e.g. "3.4.13"), empty when unknown
 
 	// Pairing (auth_mode=pairing): panel stores JWT key and mTLS client cert; worker uses SECRET_KEY. Legacy values accepted; see IsPairingMode.
 	AuthMode           string `json:"authMode" gorm:"column:auth_mode;default:legacy"` // legacy | pairing

@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/konstpic/sharx-code/v2/logger"
+	telemtinstall "github.com/konstpic/sharx-code/v2/telemt/install"
 )
 
 // Payload is one inbound worth of Telemt configuration (TOML file contents).
@@ -211,5 +212,25 @@ func (m *Manager) Apply(payloads []Payload) error {
 	}
 
 	m.commitReplaySnapshot(payloads)
+	return nil
+}
+
+// InstallVersion downloads an official Telemt release and replaces the local binary.
+// Running sidecars are stopped and restarted from the last Apply snapshot when applicable.
+func (m *Manager) InstallVersion(version string) error {
+	if m == nil {
+		return errors.New("telemt manager is nil")
+	}
+	payloads, hasSnapshot := m.ReplaySnapshotForRestart()
+	hadRunning := m.RunningCount() > 0
+	m.Stop()
+
+	if err := telemtinstall.Install(version, telemtinstall.ResolveBinaryPath()); err != nil {
+		return err
+	}
+
+	if hasSnapshot && (hadRunning || len(payloads) > 0) {
+		return m.Apply(payloads)
+	}
 	return nil
 }

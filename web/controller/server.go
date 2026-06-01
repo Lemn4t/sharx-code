@@ -40,6 +40,9 @@ type ServerController struct {
 	lastVersions        []string
 	lastGetVersionsTime int64 // unix seconds
 
+	lastTelemtVersions        []string
+	lastGetTelemtVersionsTime int64
+
 	workerHostMetricsMu       sync.Mutex
 	lastWorkerHostMetricsPoll time.Time
 }
@@ -62,6 +65,7 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.GET("/memHistory/:bucket", a.getMemHistoryBucket)
 	g.GET("/diskHistory/:bucket", a.getDiskHistoryBucket)
 	g.GET("/getXrayVersion", a.getXrayVersion)
+	g.GET("/getTelemtVersion", a.getTelemtVersion)
 	g.GET("/getConfigJson", a.getConfigJson)
 	g.GET("/getDb", a.getDb)
 	g.GET("/getNewUUID", a.getNewUUID)
@@ -76,6 +80,8 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.POST("/restartXrayService", a.restartXrayService)
 	g.POST("/installXray/:version", a.installXray)
 	g.POST("/installXrayOnNodes/:version", a.installXrayOnNodes)
+	g.POST("/installTelemt/:version", a.installTelemt)
+	g.POST("/installTelemtOnNodes/:version", a.installTelemtOnNodes)
 	g.POST("/updateGeofile", a.updateGeofile)
 	g.POST("/updateGeofile/:fileName", a.updateGeofile)
 	g.POST("/uploadGeofile/:fileName", a.uploadGeofile)
@@ -476,6 +482,26 @@ func (a *ServerController) getXrayVersion(c *gin.Context) {
 	jsonObj(c, versions, nil)
 }
 
+// getTelemtVersion retrieves available Telemt versions, with caching for 1 minute.
+func (a *ServerController) getTelemtVersion(c *gin.Context) {
+	now := time.Now().Unix()
+	if now-a.lastGetTelemtVersionsTime <= 60 {
+		jsonObj(c, a.lastTelemtVersions, nil)
+		return
+	}
+
+	versions, err := a.serverService.GetTelemtVersions()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "getVersion"), err)
+		return
+	}
+
+	a.lastTelemtVersions = versions
+	a.lastGetTelemtVersionsTime = now
+
+	jsonObj(c, versions, nil)
+}
+
 // installXray installs or updates Xray to the specified version.
 func (a *ServerController) installXray(c *gin.Context) {
 	version := c.Param("version")
@@ -483,29 +509,24 @@ func (a *ServerController) installXray(c *gin.Context) {
 	jsonMsg(c, I18nWeb(c, "pages.index.xraySwitchVersionPopover"), err)
 }
 
-// installXrayOnNodes installs Xray version on selected nodes.
-func (a *ServerController) installXrayOnNodes(c *gin.Context) {
+// installTelemt installs or updates Telemt to the specified version (standalone panel host).
+func (a *ServerController) installTelemt(c *gin.Context) {
 	version := c.Param("version")
+	err := a.serverService.UpdateTelemt(version)
+	jsonMsg(c, I18nWeb(c, "pages.index.telemtSwitchVersionPopover"), err)
+}
 
-	// Log request details for debugging
+// parseNodeIDsForInstall extracts nodeIds from JSON body, form, query, or raw form-urlencoded body.
+func parseNodeIDsForInstall(c *gin.Context) []int {
 	contentType := c.ContentType()
-	logger.Debugf("installXrayOnNodes: Content-Type=%s, version=%s", contentType, version)
-
-	// Try to get nodeIds from JSON body first (if Content-Type is application/json)
-	// This must be done BEFORE ShouldBind, which reads the body
 	var nodeIdsFromJSON []int
 	var hasNodeIdsInJSON bool
 
 	if contentType == "application/json" {
-		// Read raw body to extract nodeIds
 		bodyBytes, err := c.GetRawData()
 		if err == nil && len(bodyBytes) > 0 {
-			logger.Debugf("installXrayOnNodes: Raw body: %s", string(bodyBytes))
-			// Parse JSON to extract nodeIds
 			var jsonData map[string]interface{}
 			if err := json.Unmarshal(bodyBytes, &jsonData); err == nil {
-				logger.Debugf("installXrayOnNodes: Parsed JSON: %+v", jsonData)
-				// Check for nodeIds array
 				if nodeIdsVal, ok := jsonData["nodeIds"]; ok {
 					hasNodeIdsInJSON = true
 					if nodeIdsArray, ok := nodeIdsVal.([]interface{}); ok {
@@ -517,89 +538,56 @@ func (a *ServerController) installXrayOnNodes(c *gin.Context) {
 							}
 						}
 					}
-					logger.Debugf("installXrayOnNodes: Extracted nodeIds from JSON: %v", nodeIdsFromJSON)
 				}
-			} else {
-				logger.Warningf("installXrayOnNodes: Failed to parse JSON: %v", err)
 			}
-			// Restore body for ShouldBind
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
 	}
 
-	var nodeIds []int
-	var formBodyBytes []byte
-
 	if hasNodeIdsInJSON {
-		// Use nodeIds from JSON
-		nodeIds = nodeIdsFromJSON
-		logger.Debugf("installXrayOnNodes: Using nodeIds from JSON: %v", nodeIds)
-	} else {
-		// For form-urlencoded, read raw body first and save it
-		formBodyBytes, _ = c.GetRawData()
-		if len(formBodyBytes) > 0 {
-			logger.Debugf("installXrayOnNodes: Raw body (form-urlencoded): %s", string(formBodyBytes))
-			// Restore body for form parsing
-			c.Request.Body = io.NopCloser(bytes.NewBuffer(formBodyBytes))
-		}
-
-		// Parse form
-		if err := c.Request.ParseForm(); err == nil {
-			logger.Debugf("installXrayOnNodes: Form values: %+v", c.Request.PostForm)
-			logger.Debugf("installXrayOnNodes: PostForm values for 'nodeIds': %v", c.Request.PostForm["nodeIds"])
-		} else {
-			logger.Warningf("installXrayOnNodes: Failed to parse form: %v", err)
-		}
-
-		// Get from form-urlencoded data (nodeIds=1&nodeIds=2 format)
-		// First check if the field exists
-		_, hasNodeIds := c.GetPostForm("nodeIds")
-		logger.Debugf("installXrayOnNodes: Has nodeIds in form: %v", hasNodeIds)
-
-		nodeIdsStr := c.PostFormArray("nodeIds")
-		logger.Debugf("installXrayOnNodes: Received nodeIds from form: %v (count: %d)", nodeIdsStr, len(nodeIdsStr))
-
-		// Also try QueryArray in case it's in query string
-		if len(nodeIdsStr) == 0 {
-			nodeIdsStr = c.QueryArray("nodeIds")
-			logger.Debugf("installXrayOnNodes: Received nodeIds from query: %v (count: %d)", nodeIdsStr, len(nodeIdsStr))
-		}
-
-		// If still empty, try to parse from raw body manually (for form-urlencoded)
-		if len(nodeIdsStr) == 0 && len(formBodyBytes) > 0 {
-			bodyStr := string(formBodyBytes)
-			logger.Debugf("installXrayOnNodes: Attempting manual parse of body: %s", bodyStr)
-			// Parse form-urlencoded manually: nodeIds=1&nodeIds=2
-			parts := strings.Split(bodyStr, "&")
-			for _, part := range parts {
-				if strings.HasPrefix(part, "nodeIds=") {
-					idStr := strings.TrimPrefix(part, "nodeIds=")
-					// URL decode if needed
-					if decoded, err := url.QueryUnescape(idStr); err == nil {
-						idStr = decoded
-					}
-					idStr = strings.TrimSpace(idStr)
-					if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
-						nodeIds = append(nodeIds, id)
-						logger.Debugf("installXrayOnNodes: Manually parsed nodeId: %d", id)
-					}
-				}
-			}
-		} else {
-			// Parse from PostFormArray
-			for _, idStr := range nodeIdsStr {
-				if idStr != "" {
-					if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
-						nodeIds = append(nodeIds, id)
-					} else {
-						logger.Warningf("Invalid nodeId in array: %s (error: %v)", idStr, err)
-					}
-				}
-			}
-		}
-		logger.Debugf("installXrayOnNodes: Final parsed nodeIds: %v", nodeIds)
+		return nodeIdsFromJSON
 	}
 
+	var nodeIds []int
+	formBodyBytes, _ := c.GetRawData()
+	if len(formBodyBytes) > 0 {
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(formBodyBytes))
+	}
+	if err := c.Request.ParseForm(); err == nil {
+		nodeIdsStr := c.PostFormArray("nodeIds")
+		if len(nodeIdsStr) == 0 {
+			nodeIdsStr = c.QueryArray("nodeIds")
+		}
+		for _, idStr := range nodeIdsStr {
+			if idStr != "" {
+				if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
+					nodeIds = append(nodeIds, id)
+				}
+			}
+		}
+	}
+	if len(nodeIds) == 0 && len(formBodyBytes) > 0 {
+		bodyStr := string(formBodyBytes)
+		for _, part := range strings.Split(bodyStr, "&") {
+			if strings.HasPrefix(part, "nodeIds=") {
+				idStr := strings.TrimPrefix(part, "nodeIds=")
+				if decoded, err := url.QueryUnescape(idStr); err == nil {
+					idStr = decoded
+				}
+				idStr = strings.TrimSpace(idStr)
+				if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
+					nodeIds = append(nodeIds, id)
+				}
+			}
+		}
+	}
+	return nodeIds
+}
+
+// installXrayOnNodes installs Xray version on selected nodes.
+func (a *ServerController) installXrayOnNodes(c *gin.Context) {
+	version := c.Param("version")
+	nodeIds := parseNodeIDsForInstall(c)
 	if len(nodeIds) == 0 {
 		jsonMsg(c, "No nodes selected", nil)
 		return
@@ -637,6 +625,58 @@ func (a *ServerController) installXrayOnNodes(c *gin.Context) {
 
 	if len(errors) > 0 {
 		message += ": " + errors[0] // Show first error
+		if len(errors) > 1 {
+			message += fmt.Sprintf(" (and %d more)", len(errors)-1)
+		}
+	}
+
+	if len(errors) > 0 && len(success) == 0 {
+		jsonMsg(c, message, fmt.Errorf("installation failed"))
+	} else {
+		jsonMsg(c, message, nil)
+	}
+}
+
+// installTelemtOnNodes installs Telemt version on selected nodes.
+func (a *ServerController) installTelemtOnNodes(c *gin.Context) {
+	version := c.Param("version")
+	nodeIds := parseNodeIDsForInstall(c)
+
+	if len(nodeIds) == 0 {
+		jsonMsg(c, "No nodes selected", nil)
+		return
+	}
+
+	nodeService := service.NodeService{}
+	var errors []string
+	var success []string
+
+	for _, nodeId := range nodeIds {
+		node, err := nodeService.GetNode(nodeId)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("Node %d: %v", nodeId, err))
+			continue
+		}
+
+		err = nodeService.InstallTelemtVersion(node, version)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("Node %d (%s): %v", nodeId, node.Name, err))
+		} else {
+			success = append(success, fmt.Sprintf("Node %d (%s)", nodeId, node.Name))
+		}
+	}
+
+	var message string
+	if len(success) > 0 && len(errors) == 0 {
+		message = fmt.Sprintf("Telemt version %s installed successfully on %d node(s)", version, len(success))
+	} else if len(success) > 0 && len(errors) > 0 {
+		message = fmt.Sprintf("Installed on %d node(s), failed on %d node(s)", len(success), len(errors))
+	} else {
+		message = fmt.Sprintf("Failed to install on all nodes")
+	}
+
+	if len(errors) > 0 {
+		message += ": " + errors[0]
 		if len(errors) > 1 {
 			message += fmt.Sprintf(" (and %d more)", len(errors)-1)
 		}

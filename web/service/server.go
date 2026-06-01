@@ -26,6 +26,7 @@ import (
 	"github.com/konstpic/sharx-code/v2/database"
 	"github.com/konstpic/sharx-code/v2/database/model"
 	"github.com/konstpic/sharx-code/v2/logger"
+	telemtinstall "github.com/konstpic/sharx-code/v2/telemt/install"
 	"github.com/konstpic/sharx-code/v2/util/common"
 	"github.com/konstpic/sharx-code/v2/util/sys"
 	"github.com/konstpic/sharx-code/v2/web/websocket"
@@ -83,6 +84,7 @@ type Status struct {
 		State    ProcessState `json:"state"`
 		Count    int          `json:"count"`
 		ErrorMsg string       `json:"errorMsg"`
+		Version  string       `json:"version"`
 	} `json:"telemt"`
 	// PanelVersion is the SharX panel release (embedded at build from config/version).
 	PanelVersion string `json:"panelVersion"`
@@ -788,6 +790,7 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 	if multiModeTelemt {
 		status.Telemt.State = Stop
 		status.Telemt.Count = 0
+		status.Telemt.Version = ""
 	} else {
 		tc := LocalTelemtSidecarCount()
 		status.Telemt.Count = tc
@@ -796,6 +799,7 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		} else {
 			status.Telemt.State = Stop
 		}
+		status.Telemt.Version = telemtinstall.ReadVersion("")
 	}
 
 	// Application stats
@@ -1069,6 +1073,33 @@ func (s *ServerService) StopXrayService() error {
 	if err != nil {
 		logger.Error("stop xray failed:", err)
 		return err
+	}
+	return nil
+}
+
+func (s *ServerService) GetTelemtVersions() ([]string, error) {
+	return telemtinstall.ListVersions()
+}
+
+func (s *ServerService) UpdateTelemt(version string) error {
+	ss := SettingService{}
+	multi, err := ss.GetMultiNodeMode()
+	if err != nil {
+		multi = false
+	}
+	if multi {
+		return common.NewError("in multi-node mode, install Telemt on workers from the version dialog")
+	}
+
+	wasRunning := LocalTelemtSidecarCount() > 0
+	StopLocalTelemtSidecars()
+
+	if err := telemtinstall.Install(version, telemtinstall.ResolveBinaryPath()); err != nil {
+		return err
+	}
+
+	if wasRunning {
+		return ApplyLocalTelemtStandalone(&s.xrayService)
 	}
 	return nil
 }

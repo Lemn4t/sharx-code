@@ -81,6 +81,7 @@ type NodeRow = {
   inbounds?: InboundRef[];
   profiles?: ProfileRef[];
   xrayVersion?: string;
+  telemtVersion?: string;
   /** SharX worker build (from node /api/v1/status sharxVersion), cached in DB */
   workerVersion?: string;
   /** Worker Xray: running | stopped | error | unknown */
@@ -1251,7 +1252,7 @@ export function NodesPage() {
               </SelectNative>
             </div>
           <div className="panel-data-table overflow-x-auto">
-            <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-subtle)]">
                   <th
@@ -1270,6 +1271,7 @@ export function NodesPage() {
                   <th className="p-3">{t("pages.nodes.workerVersion")}</th>
                   <th className="p-3">{t("pages.nodes.xrayVersion")}</th>
                   <th className="p-3">{t("pages.nodes.xrayState")}</th>
+                  <th className="p-3">{t("pages.nodes.telemtVersion")}</th>
                   <th className="p-3">
                     {t("pages.nodes.telemtState")}
                   </th>
@@ -1281,7 +1283,7 @@ export function NodesPage() {
                 {sortedAndFilteredRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={13}
+                      colSpan={14}
                       className="p-6 text-center text-sm text-[var(--fg-subtle)]"
                     >
                       {t("pages.nodes.noMatches")}
@@ -1392,6 +1394,9 @@ export function NodesPage() {
                           </>
                         ) : null}
                       </div>
+                    </td>
+                    <td className="p-3 font-mono text-xs">
+                      {r.telemtVersion || "—"}
                     </td>
                     <td
                       className="p-3"
