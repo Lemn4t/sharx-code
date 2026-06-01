@@ -7,6 +7,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Building2,
   Calendar,
   Filter,
   Clock,
@@ -2327,6 +2328,9 @@ export function ClientsPage() {
   const [connectionKeyQrText, setConnectionKeyQrText] = useState<string | null>(null);
   const [clientsConfirmAction, setClientsConfirmAction] = useState<ClientsConfirmAction>(null);
   const [clientsConfirmBusy, setClientsConfirmBusy] = useState(false);
+  const [bulkAssignGroupOpen, setBulkAssignGroupOpen] = useState(false);
+  const [bulkAssignGroupId, setBulkAssignGroupId] = useState("");
+  const [bulkAssignGroupBusy, setBulkAssignGroupBusy] = useState(false);
   const sheetClient =
     sheetClientId != null ? rows.find((x) => x.id === sheetClientId) : undefined;
   const keysModalClient =
@@ -3136,6 +3140,60 @@ export function ClientsPage() {
     setClientsConfirmAction({ kind: "bulkDelete", clients: [...list] });
   };
 
+  const openBulkAssignGroup = () => {
+    const list = bulkSelectedClients;
+    if (!list.length) {
+      toast.error(t("pages.clients.noClientsSelected"));
+      return;
+    }
+    setBulkAssignGroupId("");
+    setBulkAssignGroupOpen(true);
+  };
+
+  const submitBulkAssignGroup = async () => {
+    const list = bulkSelectedClients;
+    if (!list.length) {
+      toast.error(t("pages.clients.noClientsSelected"));
+      return;
+    }
+    if (bulkAssignGroupId === "") {
+      toast.error(t("pages.clients.selectGroup"));
+      return;
+    }
+    const clientIds = list.map((c) => c.id);
+    setBulkAssignGroupBusy(true);
+    try {
+      let r: { success?: boolean; msg?: string };
+      if (bulkAssignGroupId === "none") {
+        r = await postJson(panel("group/0/removeClients"), { clientIds }, true);
+      } else {
+        const gid = Number(bulkAssignGroupId);
+        if (!Number.isFinite(gid) || gid <= 0) {
+          toast.error(t("pages.clients.selectGroup"));
+          return;
+        }
+        r = await postJson(panel(`group/${gid}/assignClients`), { clientIds }, true);
+      }
+      if (r.success) {
+        toast.success(
+          r.msg ||
+            (bulkAssignGroupId === "none"
+              ? t("pages.clients.groupRemoved")
+              : t("pages.clients.groupAssigned")),
+        );
+        setBulkAssignGroupOpen(false);
+        setSelectedIds(new Set());
+        void load();
+      } else {
+        toast.error(r.msg || t("pages.clients.addError"));
+      }
+    } catch {
+      toast.error(t("pages.clients.addError"));
+    } finally {
+      setBulkAssignGroupBusy(false);
+    }
+  };
+
   const loadModalData = useCallback(async () => {
     const [inR, gR] = await Promise.all([
       getJson<InboundOption[]>(panel("api/inbounds/list")),
@@ -3711,6 +3769,16 @@ export function ClientsPage() {
                   {t("pages.clients.clearSelection")}
                 </Button>
                 <span className="mx-1 hidden h-4 w-px bg-[var(--border)] sm:inline" aria-hidden />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="!h-8 !gap-1.5 !px-2.5 !text-xs"
+                  disabled={!selectedIds.size}
+                  onClick={() => openBulkAssignGroup()}
+                >
+                  <Building2 size={14} />
+                  {t("pages.clients.assignGroup")}
+                </Button>
                 <Button
                   type="button"
                   variant="secondary"
@@ -4871,6 +4939,60 @@ export function ClientsPage() {
           }
         }}
       />
+
+      <Modal
+        open={bulkAssignGroupOpen}
+        onClose={() => {
+          if (!bulkAssignGroupBusy) setBulkAssignGroupOpen(false);
+        }}
+        title={t("pages.clients.bulkAssignGroupConfirm", {
+          count: bulkSelectedClients.length,
+          defaultValue: "Assign group for {{count}} clients",
+        })}
+        width={440}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={bulkAssignGroupBusy}
+              onClick={() => setBulkAssignGroupOpen(false)}
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              type="button"
+              loading={bulkAssignGroupBusy}
+              onClick={() => void submitBulkAssignGroup()}
+            >
+              {t("confirm")}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 text-sm">
+          <p className="text-xs text-[var(--fg-muted)]">
+            {t("pages.clients.bulkAssignGroupHint", {
+              defaultValue:
+                "Clients already in another group will be moved to the selected group.",
+            })}
+          </p>
+          <SelectNative
+            value={bulkAssignGroupId}
+            onChange={(e) => setBulkAssignGroupId(e.target.value)}
+            aria-label={t("pages.clients.selectGroup")}
+          >
+            <option value="">{t("pages.clients.selectGroup")}</option>
+            <option value="none">{t("pages.clients.filterGroupNone")}</option>
+            {groupOptions.map((g) => (
+              <option key={g.id} value={String(g.id)}>
+                {g.name}
+              </option>
+            ))}
+          </SelectNative>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={clientsConfirmAction != null}

@@ -2,7 +2,7 @@
 
 import { Building2, Pencil, Plus, Trash2, Users } from "lucide-react";
 import type { TextareaHTMLAttributes } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getJson, postJson, type Msg } from "@/lib/api";
 import { panel } from "@/lib/paths";
@@ -96,6 +96,7 @@ export function GroupsPage() {
   const [inbounds, setInbounds] = useState<InboundOption[]>([]);
   const [inboundIds, setInboundIds] = useState<Record<number, boolean>>({});
   const [inboundSubmitting, setInboundSubmitting] = useState(false);
+  const inboundDraftGroupIdRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -318,8 +319,18 @@ export function GroupsPage() {
 
   const openInboundsModal = (g: GroupRow) => {
     setBulkGroup(null);
+    if (inboundDraftGroupIdRef.current !== g.id) {
+      setInboundIds({});
+      inboundDraftGroupIdRef.current = g.id;
+    }
     setInboundGroup(g);
-    setInboundIds({});
+  };
+
+  const backToBulkFromInbounds = () => {
+    if (inboundGroup) {
+      setBulkGroup(inboundGroup);
+    }
+    setInboundGroup(null);
   };
 
   const submitInbounds = async () => {
@@ -343,6 +354,8 @@ export function GroupsPage() {
         toast.success(
           (r as { msg?: string }).msg || t("pages.groups.inboundsAssigned"),
         );
+        inboundDraftGroupIdRef.current = null;
+        setInboundIds({});
         setInboundGroup(null);
         void load();
       } else {
@@ -680,6 +693,14 @@ export function GroupsPage() {
         width={520}
         footer={
           <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={inboundSubmitting}
+              onClick={backToBulkFromInbounds}
+            >
+              {t("back", { defaultValue: "Back" })}
+            </Button>
             <Button
               variant="secondary"
               type="button"
