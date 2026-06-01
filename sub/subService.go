@@ -1016,10 +1016,8 @@ func (s *SubService) genVmessLink(inbound *model.Inbound, email string) string {
 			if fpValue, ok := searchKey(tlsSettings, "fingerprint"); ok {
 				baseObj["fp"], _ = fpValue.(string)
 			}
-			if insecure, ok := searchKey(tlsSettings, "allowInsecure"); ok {
-				baseObj["allowInsecure"], _ = insecure.(bool)
-			}
 		}
+		finalizeVmessTLSBase(tlsSetting, baseObj)
 	}
 
 	clients, _ := s.inboundService.GetClients(inbound)
@@ -1046,7 +1044,7 @@ func (s *SubService) genVmessLink(inbound *model.Inbound, email string) string {
 			newSecurity, _ := ep["forceTls"].(string)
 			newObj := map[string]any{}
 			for key, value := range baseObj {
-				if !(newSecurity == "none" && (key == "alpn" || key == "sni" || key == "fp" || key == "allowInsecure")) {
+				if !(newSecurity == "none" && tlsQueryKeysStrippedForPlainSecurity(key)) {
 					newObj[key] = value
 				}
 			}
@@ -1191,10 +1189,8 @@ func (s *SubService) genVmessLinkWithClient(inbound *model.Inbound, client *mode
 			if fpValue, ok := searchKey(tlsSettings, "fingerprint"); ok {
 				baseObj["fp"], _ = fpValue.(string)
 			}
-			if insecure, ok := searchKey(tlsSettings, "allowInsecure"); ok {
-				baseObj["allowInsecure"], _ = insecure.(bool)
-			}
 		}
+		finalizeVmessTLSBase(tlsSetting, baseObj)
 	}
 
 	// Use ClientEntity data directly
@@ -1214,7 +1210,7 @@ func (s *SubService) genVmessLinkWithClient(inbound *model.Inbound, client *mode
 			newSecurity, _ := ep["forceTls"].(string)
 			newObj := map[string]any{}
 			for key, value := range baseObj {
-				if !(newSecurity == "none" && (key == "alpn" || key == "sni" || key == "fp" || key == "allowInsecure")) {
+				if !(newSecurity == "none" && tlsQueryKeysStrippedForPlainSecurity(key)) {
 					newObj[key] = value
 				}
 			}
@@ -1410,12 +1406,8 @@ func (s *SubService) genVlessLinkWithClient(inbound *model.Inbound, client *mode
 			if fpValue, ok := searchKey(tlsSettings, "fingerprint"); ok {
 				params["fp"], _ = fpValue.(string)
 			}
-			if insecure, ok := searchKey(tlsSettings, "allowInsecure"); ok {
-				if insecure.(bool) {
-					params["allowInsecure"] = "1"
-				}
-			}
 		}
+		finalizeTLSQueryParams(tlsSetting, params)
 
 		if (streamNetwork == "tcp" || streamNetwork == "xhttp") && len(vlessFlow) > 0 {
 			params["flow"] = vlessFlow
@@ -1508,7 +1500,7 @@ func (s *SubService) genVlessLinkWithClient(inbound *model.Inbound, client *mode
 			q := url.Query()
 
 			for k, v := range epParams {
-				if !(newSecurity == "none" && (k == "alpn" || k == "sni" || k == "fp" || k == "allowInsecure")) {
+				if !(newSecurity == "none" && tlsQueryKeysStrippedForPlainSecurity(k)) {
 					q.Add(k, v)
 				}
 			}
@@ -1648,12 +1640,8 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 			if fpValue, ok := searchKey(tlsSettings, "fingerprint"); ok {
 				params["fp"], _ = fpValue.(string)
 			}
-			if insecure, ok := searchKey(tlsSettings, "allowInsecure"); ok {
-				if insecure.(bool) {
-					params["allowInsecure"] = "1"
-				}
-			}
 		}
+		finalizeTLSQueryParams(tlsSetting, params)
 
 		if (streamNetwork == "tcp" || streamNetwork == "xhttp") && len(vlessFlow) > 0 {
 			params["flow"] = vlessFlow
@@ -1739,7 +1727,7 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 			q := url.Query()
 
 			for k, v := range epParams {
-				if !(newSecurity == "none" && (k == "alpn" || k == "sni" || k == "fp" || k == "allowInsecure")) {
+				if !(newSecurity == "none" && tlsQueryKeysStrippedForPlainSecurity(k)) {
 					q.Add(k, v)
 				}
 			}
@@ -1871,12 +1859,8 @@ func (s *SubService) genTrojanLinkWithClient(inbound *model.Inbound, client *mod
 			if fpValue, ok := searchKey(tlsSettings, "fingerprint"); ok {
 				params["fp"], _ = fpValue.(string)
 			}
-			if insecure, ok := searchKey(tlsSettings, "allowInsecure"); ok {
-				if insecure.(bool) {
-					params["allowInsecure"] = "1"
-				}
-			}
 		}
+		finalizeTLSQueryParams(tlsSetting, params)
 	}
 
 	if security == "reality" {
@@ -1946,7 +1930,7 @@ func (s *SubService) genTrojanLinkWithClient(inbound *model.Inbound, client *mod
 			q := url.Query()
 
 			for k, v := range epParams {
-				if !(newSecurity == "none" && (k == "alpn" || k == "sni" || k == "fp" || k == "allowInsecure")) {
+				if !(newSecurity == "none" && tlsQueryKeysStrippedForPlainSecurity(k)) {
 					q.Add(k, v)
 				}
 			}
@@ -2087,12 +2071,8 @@ func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string 
 			if fpValue, ok := searchKey(tlsSettings, "fingerprint"); ok {
 				params["fp"], _ = fpValue.(string)
 			}
-			if insecure, ok := searchKey(tlsSettings, "allowInsecure"); ok {
-				if insecure.(bool) {
-					params["allowInsecure"] = "1"
-				}
-			}
 		}
+		finalizeTLSQueryParams(tlsSetting, params)
 	}
 
 	if security == "reality" {
@@ -2164,7 +2144,7 @@ func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string 
 			q := url.Query()
 
 			for k, v := range epParams {
-				if !(newSecurity == "none" && (k == "alpn" || k == "sni" || k == "fp" || k == "allowInsecure")) {
+				if !(newSecurity == "none" && tlsQueryKeysStrippedForPlainSecurity(k)) {
 					q.Add(k, v)
 				}
 			}
@@ -2370,13 +2350,9 @@ func (s *SubService) genShadowsocksLinkWithClient(inbound *model.Inbound, client
 					if fpValue, ok := searchKey(innerMap, "fingerprint"); ok {
 						params["fp"], _ = fpValue.(string)
 					}
-					if insecure, ok := searchKey(innerMap, "allowInsecure"); ok {
-						if b, ok := insecure.(bool); ok && b {
-							params["allowInsecure"] = "1"
-						}
-					}
 				}
 			}
+			finalizeTLSQueryParams(tlsSettingToAnyMap(tlsSetting), params)
 		}
 	}
 
@@ -2426,7 +2402,7 @@ func (s *SubService) genShadowsocksLinkWithClient(inbound *model.Inbound, client
 			}
 			q := u.Query()
 			for k, v := range epParams {
-				if !(newSecurity == "none" && (k == "alpn" || k == "sni" || k == "fp" || k == "allowInsecure")) {
+				if !(newSecurity == "none" && tlsQueryKeysStrippedForPlainSecurity(k)) {
 					q.Add(k, v)
 				}
 			}
@@ -2590,13 +2566,9 @@ func (s *SubService) genShadowsocksLink(inbound *model.Inbound, email string) st
 					if fpValue, ok := searchKey(innerMap, "fingerprint"); ok {
 						params["fp"], _ = fpValue.(string)
 					}
-					if insecure, ok := searchKey(innerMap, "allowInsecure"); ok {
-						if b, ok := insecure.(bool); ok && b {
-							params["allowInsecure"] = "1"
-						}
-					}
 				}
 			}
+			finalizeTLSQueryParams(tlsSettingToAnyMap(tlsSetting), params)
 		}
 	}
 
@@ -2646,7 +2618,7 @@ func (s *SubService) genShadowsocksLink(inbound *model.Inbound, email string) st
 			}
 			q := u.Query()
 			for k, v := range epParams {
-				if !(newSecurity == "none" && (k == "alpn" || k == "sni" || k == "fp" || k == "allowInsecure")) {
+				if !(newSecurity == "none" && tlsQueryKeysStrippedForPlainSecurity(k)) {
 					q.Add(k, v)
 				}
 			}
@@ -2755,26 +2727,14 @@ func (s *SubService) hysteriaLinkForAuth(inbound *model.Inbound, email, auth str
 		params["sni"], _ = sniValue.(string)
 	}
 
-	insecureLink := false
-	if tlsSetting != nil {
-		if v, ok := tlsSetting["allowInsecure"].(bool); ok && v {
-			insecureLink = true
-		}
-	}
 	tlsSettings, _ := searchKey(tlsSetting, "settings")
 	if tlsSettings != nil {
 		if fpValue, ok := searchKey(tlsSettings, "fingerprint"); ok {
 			params["fp"], _ = fpValue.(string)
 		}
-		if insecure, ok := searchKey(tlsSettings, "allowInsecure"); ok {
-			if b, ok := insecure.(bool); ok && b {
-				insecureLink = true
-			}
-		}
 	}
-	if insecureLink {
-		params["insecure"] = "1"
-	}
+
+	finalizeHysteriaTLSParams(tlsSetting, params)
 
 	if finalmask, ok := stream["finalmask"].(map[string]interface{}); ok {
 		if udpMasks, ok := finalmask["udp"].([]interface{}); ok {

@@ -43,7 +43,9 @@ func applyHostOverridesToParams(host *model.Host, streamNetwork string, params m
 		params["fp"] = fp
 	}
 	if host.SubscriptionAllowInsecure != nil {
-		if *host.SubscriptionAllowInsecure {
+		if params["pcs"] != "" {
+			// cert pin takes precedence over allowInsecure (Xray 26+)
+		} else if *host.SubscriptionAllowInsecure {
 			params["allowInsecure"] = "1"
 		} else {
 			delete(params, "allowInsecure")
@@ -94,7 +96,11 @@ func applyHostOverridesToVmessBase(host *model.Host, network string, baseObj map
 		baseObj["fp"] = fp
 	}
 	if host.SubscriptionAllowInsecure != nil {
-		baseObj["allowInsecure"] = *host.SubscriptionAllowInsecure
+		if _, hasPin := baseObj["pinnedPeerCertSha256"]; hasPin {
+			// cert pin takes precedence over allowInsecure
+		} else {
+			baseObj["allowInsecure"] = *host.SubscriptionAllowInsecure
+		}
 	}
 
 	hh := strings.TrimSpace(host.SubscriptionHttpHost)
@@ -142,7 +148,9 @@ func applyHostOverridesToHysteriaParams(host *model.Host, params map[string]stri
 		params["fp"] = fp
 	}
 	if host.SubscriptionAllowInsecure != nil {
-		if *host.SubscriptionAllowInsecure {
+		if params["pcs"] != "" {
+			// cert pin takes precedence over insecure
+		} else if *host.SubscriptionAllowInsecure {
 			params["insecure"] = "1"
 		} else {
 			delete(params, "insecure")
