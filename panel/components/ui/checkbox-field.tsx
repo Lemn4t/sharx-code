@@ -1,20 +1,49 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
+import { Check } from "lucide-react";
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from "react";
 
-/** Shared classes for panel-styled native checkboxes (used by `Checkbox` and `CheckboxField`). */
+function cx(...parts: (string | false | undefined)[]) {
+  return parts.filter(Boolean).join(" ");
+}
+
+/** Visual box (must follow a `peer` checkbox input in the same label). */
 export const checkboxControlClass =
-  "size-4 shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-elevated)] accent-[var(--accent)] shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/35 focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--bg)] disabled:cursor-not-allowed disabled:opacity-50";
+  "flex size-[1.125rem] shrink-0 items-center justify-center rounded-[6px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-sm transition-all peer-checked:border-[var(--accent)] peer-checked:bg-[var(--accent)] text-[var(--accent-fg,#0d1117)] peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent)]/40 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-[var(--bg)] peer-disabled:cursor-not-allowed peer-disabled:opacity-50";
+
+const CheckboxInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function CheckboxInput(props, ref) {
+    return (
+      <>
+        <input ref={ref} type="checkbox" className="peer sr-only" {...props} />
+        <span className={checkboxControlClass} aria-hidden>
+          <Check
+            className="size-3 opacity-0 transition-opacity peer-checked:opacity-100"
+            strokeWidth={2.75}
+          />
+        </span>
+      </>
+    );
+  },
+);
 
 export type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
   className?: string;
 };
 
-/** Bare checkbox for tables and custom layouts (same look as `CheckboxField`). */
+/** Standalone checkbox (wraps control in a clickable label). */
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(
   { className = "", ...rest },
   ref,
 ) {
   return (
-    <input ref={ref} type="checkbox" className={`${checkboxControlClass} ${className}`.trim()} {...rest} />
+    <label
+      className={cx(
+        "inline-flex shrink-0 cursor-pointer items-center",
+        rest.disabled && "cursor-not-allowed",
+        className,
+      )}
+    >
+      <CheckboxInput ref={ref} {...rest} />
+    </label>
   );
 });
 
@@ -24,17 +53,32 @@ type CheckboxFieldProps = Omit<
 > & {
   label: ReactNode;
   className?: string;
+  align?: "center" | "start";
 };
 
-export function CheckboxField({ label, className = "", id, ...rest }: CheckboxFieldProps) {
-  const cid = id ?? `cb-${String(label).slice(0, 8)}`;
+export function CheckboxField({
+  label,
+  className = "",
+  id,
+  align = "center",
+  ...rest
+}: CheckboxFieldProps) {
+  const autoId = useId();
+  const cid = id ?? autoId;
   return (
     <label
       htmlFor={cid}
-      className={`inline-flex cursor-pointer items-center gap-2 text-sm text-[var(--fg-muted)] ${className}`}
+      className={cx(
+        "flex cursor-pointer gap-2.5 text-sm text-[var(--fg-muted)]",
+        align === "start" ? "items-start" : "items-center",
+        rest.disabled && "cursor-not-allowed opacity-60",
+        className,
+      )}
     >
-      <Checkbox {...rest} id={cid} />
-      {label}
+      <CheckboxInput id={cid} {...rest} />
+      <span className={cx("min-w-0 flex-1 leading-snug", align === "start" && "pt-0.5")}>
+        {label}
+      </span>
     </label>
   );
 }

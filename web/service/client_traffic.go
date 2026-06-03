@@ -2,10 +2,12 @@
 package service
 
 import (
+	"encoding/json"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/konstpic/sharx-code/v2/database"
 	"github.com/konstpic/sharx-code/v2/database/model"
 	"github.com/konstpic/sharx-code/v2/logger"
 	"github.com/konstpic/sharx-code/v2/xray"
@@ -163,6 +165,8 @@ func (s *ClientService) AddClientTraffic(tx *gorm.DB, traffics []*xray.ClientTra
 		Down       int64
 		InboundIds []int
 	})
+
+	traffics = s.remapWireGuardStatEmailsToClientNames(traffics)
 
 	for _, traffic := range traffics {
 		email := strings.ToLower(traffic.Email)
@@ -642,7 +646,7 @@ func (s *ClientService) AddHysteriaInboundTrafficFallbackFromCumulative(tx *gorm
 	hysteriaInboundIDs := make([]int, 0, len(inbounds))
 	for _, inb := range inbounds {
 		switch model.NormalizeProtocol(inb.Protocol) {
-		case model.Hysteria, model.Hysteria2:
+		case model.Hysteria, model.Hysteria2, model.WireGuard:
 			hysteriaInboundIDs = append(hysteriaInboundIDs, inb.Id)
 			inboundByID[inb.Id] = inb
 		}
@@ -777,7 +781,7 @@ func (s *ClientService) applyHysteriaTagDeltas(tx *gorm.DB, tagDelta map[string]
 	hysteriaInboundIDs := make([]int, 0, len(inbounds))
 	for _, inb := range inbounds {
 		switch model.NormalizeProtocol(inb.Protocol) {
-		case model.Hysteria, model.Hysteria2:
+		case model.Hysteria, model.Hysteria2, model.WireGuard:
 			hysteriaInboundIDs = append(hysteriaInboundIDs, inb.Id)
 			inboundByID[inb.Id] = inb
 		}
@@ -956,4 +960,55 @@ func (s *ClientService) syncInboundTrafficFromClients(tx *gorm.DB, inboundIds ma
 	}
 
 	return nil
+}
+
+// remapWireGuardStatEmailsToClientNames maps Xray stat keys that use WireGuard publicKey
+// instead of panel client name (email) back to the client name used in ClientEntity.
+func (s *ClientService) remapWireGuardStatEmailsToClientNames(traffics []*xray.ClientTraffic) []*xray.ClientTraffic {
+	if len(traffics) == 0 {
+		return traffics
+	}
+	db := database.GetDB()
+	var wgInbounds []model.Inbound
+	if err := db.Where("LOWER(protocol) = ?", string(model.WireGuard)).Find(&wgInbounds).Error; err != nil || len(wgInbounds) == 0 {
+		return traffics
+	}
+	pubKeyToClient := make(map[string]string)
+	for _, inb := range wgInbounds {
+		var settings map[string]any
+		if err := json.Unmarshal([]byte(inb.Settings), &settings); err != nil || settings == nil {
+			continue
+		}
+		peers, _ := settings["peers"].([]any)
+		for _, p := range peers {
+			pm, ok := p.(map[string]any)
+			if !ok {
+				continue
+			}
+			clientName := strings.ToLower(strings.TrimSpace(wireGuardPeerAnyEmail(pm)))
+			pk := strings.TrimSpace(strAny(pm["publicKey"]))
+			if clientName == "" || pk == "" {
+				continue
+			}
+			pubKeyToClient[strings.ToLower(pk)] = clientName
+		}
+	}
+	if len(pubKeyToClient) == 0 {
+		return traffics
+	}
+	out := make([]*xray.ClientTraffic, 0, len(traffics))
+	for _, t := range traffics {
+		if t == nil {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(t.Email))
+		if clientName, ok := pubKeyToClient[key]; ok && clientName != "" {
+			cp := *t
+			cp.Email = clientName
+			out = append(out, &cp)
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
 }

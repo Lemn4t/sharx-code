@@ -88,13 +88,24 @@ func SanitizeWireGuardSettingsJSONForXray(settings string) string {
 	}
 	delete(m, PanelWireGuardInactivePeersSettingsKey)
 	if peers, ok := m["peers"].([]any); ok {
-		for _, p := range peers {
+		for i, p := range peers {
 			pm, ok := p.(map[string]any)
 			if !ok {
 				continue
 			}
 			delete(pm, "privateKey")
+			// Xray per-user stats require `email` on each peer; panel stores aliases in name/clientName.
+			if strings.TrimSpace(strAny(pm["email"])) == "" {
+				if e := wireGuardPeerAnyEmail(pm); e != "" {
+					pm["email"] = e
+				}
+			}
+			delete(pm, "name")
+			delete(pm, "clientName")
+			delete(pm, "clientEmail")
+			peers[i] = pm
 		}
+		m["peers"] = peers
 	}
 	b, err := json.Marshal(m)
 	if err != nil {

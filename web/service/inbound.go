@@ -120,6 +120,12 @@ func (s *InboundService) updateInboundWithRetry(inbound *model.Inbound) (*model.
 	return result, needRestart, err
 }
 
+// updateInboundSettingsDBOnly persists inbound settings JSON without touching the live Xray/Telemt runtime.
+func (s *InboundService) updateInboundSettingsDBOnly(inboundId int, settings string) error {
+	db := database.GetDB()
+	return db.Model(&model.Inbound{}).Where("id = ?", inboundId).Update("settings", settings).Error
+}
+
 func enrichInboundNodeBindings(inbound *model.Inbound) {
 	if inbound == nil {
 		return
@@ -409,7 +415,7 @@ func (s *InboundService) BuildSettingsFromClientEntities(inbound *model.Inbound,
 	// VLESS: flow is defined only on the inbound; same value for every client on this connection.
 	vlessFromInbound := ""
 	if proto == model.VLESS {
-		vlessFromInbound = VLESSFlowFromInboundSettings(inbound.Settings)
+		vlessFromInbound = VLESSEffectiveFlow(inbound.Settings, inbound.StreamSettings, inbound.Protocol)
 	}
 
 	// Build clients array for Xray (only minimal fields)
@@ -555,6 +561,8 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 		return inbound, false, common.NewError("Duplicate email:", existEmail)
 	}
 
+	SanitizeVLESSFlowInInboundSettings(inbound)
+
 	clients, err := s.GetClients(inbound)
 	if err != nil {
 		return inbound, false, err
@@ -611,6 +619,11 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 
 	db := database.GetDB()
 
+	userProvidedTag, tagErr := s.AssignInboundTag(inbound, multiMode)
+	if tagErr != nil {
+		return inbound, false, tagErr
+	}
+
 	err = db.Transaction(func(tx *gorm.DB) error {
 		return tx.Save(inbound).Error
 	})
@@ -619,17 +632,8 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 		return inbound, false, err
 	}
 
-	// In multi-node mode, update tag with ID after creation to ensure uniqueness
-	if multiMode && inbound.Id > 0 {
-		newTag := s.generateInboundTag(inbound, multiMode)
-		if inbound.Tag != newTag {
-			inbound.Tag = newTag
-			if err := db.Model(inbound).Update("tag", newTag).Error; err != nil {
-				logger.Warningf("Failed to update inbound tag after creation: %v", err)
-			} else {
-				logger.Debugf("Updated inbound tag to %s after creation (multi-node mode)", newTag)
-			}
-		}
+	if err := s.FinalizeInboundTagAfterCreate(inbound, multiMode, userProvidedTag); err != nil {
+		logger.Warningf("Failed to finalize inbound tag after creation: %v", err)
 	}
 
 	// Note: ClientStats are no longer managed here - clients are managed through ClientEntity
@@ -933,6 +937,8 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 		return inbound, false, err
 	}
 
+	SanitizeVLESSFlowInInboundSettings(inbound)
+
 	// WireGuard: panel no longer posts peers; keep existing DB peers (from client assignment).
 	if model.NormalizeProtocol(inbound.Protocol) == model.WireGuard {
 		merged, err2 := PreserveWireGuardPeersOnInboundUpdate(inbound.Settings, oldInbound.Settings)
@@ -1024,8 +1030,10 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 	oldInbound.Settings = inbound.Settings
 	oldInbound.StreamSettings = inbound.StreamSettings
 	oldInbound.Sniffing = inbound.Sniffing
-	// Generate tag based on mode (multi-node uses ID for uniqueness)
-	oldInbound.Tag = s.generateInboundTag(inbound, multiMode)
+	if _, tagErr := s.AssignInboundTag(inbound, multiMode); tagErr != nil {
+		return inbound, false, tagErr
+	}
+	oldInbound.Tag = inbound.Tag
 
 	needRestart := false
 
@@ -2254,7 +2262,7 @@ func (s *InboundService) ResetClientTraffic(id int, clientEmail string) (bool, e
 					}
 					flowVal := ""
 					if model.NormalizeProtocol(inbound.Protocol) == model.VLESS {
-						flowVal = VLESSFlowFromInboundSettings(inbound.Settings)
+						flowVal = VLESSEffectiveFlow(inbound.Settings, inbound.StreamSettings, inbound.Protocol)
 					}
 					user := map[string]any{
 						"email":    client.Email,

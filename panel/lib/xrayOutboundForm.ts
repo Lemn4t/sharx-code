@@ -31,6 +31,17 @@ export type OutboundProtocolOption = (typeof OUTBOUND_PROTOCOL_OPTIONS)[number];
 /** VLESS `settings.vnext[0].users[0].flow` — Xray common values. */
 export const OUTBOUND_VLESS_FLOW_OPTIONS = ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"] as const;
 
+/** XTLS flow is incompatible with XHTTP and non-TCP transports (Xray VLESS docs). */
+export function vlessOutboundFlowAllowed(network: string, security: string): boolean {
+  if (network === "xhttp") return false;
+  if (network !== "tcp") return false;
+  return security === "tls" || security === "reality";
+}
+
+export function effectiveVlessOutboundFlow(network: string, security: string, flow: string): string {
+  return vlessOutboundFlowAllowed(network, security) ? flow.trim() : "";
+}
+
 /** Xray `streamSettings.network` (outbound). */
 export const OUTBOUND_STREAM_NETWORK_OPTIONS = [
   "tcp",

@@ -1258,9 +1258,12 @@ func (s *SubService) genVmessLinkWithClient(inbound *model.Inbound, client *mode
 	return links
 }
 
-// vlessFlowForShareLink returns VLESS flow from the inbound settings only (clientFlow is ignored).
-func vlessFlowForShareLink(_ string, inboundSettings string) string {
-	return service.VLESSFlowFromInboundSettings(inboundSettings)
+// vlessFlowForShareLink returns VLESS flow when allowed for this inbound transport (clientFlow is ignored).
+func vlessFlowForShareLink(_ string, inbound *model.Inbound) string {
+	if inbound == nil {
+		return ""
+	}
+	return service.VLESSEffectiveFlow(inbound.Settings, inbound.StreamSettings, inbound.Protocol)
 }
 
 // applyXhttpPaddingParams copies xPadding* fields from xhttpSettings into vless:// / trojan:// / ss://
@@ -1325,7 +1328,7 @@ func (s *SubService) genVlessLinkWithClient(inbound *model.Inbound, client *mode
 	if streamNetwork == "" {
 		streamNetwork = "tcp"
 	}
-	vlessFlow := vlessFlowForShareLink(client.Flow, inbound.Settings)
+	vlessFlow := vlessFlowForShareLink(client.Flow, inbound)
 	params := make(map[string]string)
 	params["type"] = streamNetwork
 
@@ -1409,7 +1412,7 @@ func (s *SubService) genVlessLinkWithClient(inbound *model.Inbound, client *mode
 		}
 		finalizeTLSQueryParams(tlsSetting, params)
 
-		if (streamNetwork == "tcp" || streamNetwork == "xhttp") && len(vlessFlow) > 0 {
+		if len(vlessFlow) > 0 {
 			params["flow"] = vlessFlow
 		}
 	}
@@ -1451,7 +1454,7 @@ func (s *SubService) genVlessLinkWithClient(inbound *model.Inbound, client *mode
 			params["spx"] = "/" + random.Seq(15)
 		}
 
-		if (streamNetwork == "tcp" || streamNetwork == "xhttp") && len(vlessFlow) > 0 {
+		if len(vlessFlow) > 0 {
 			params["flow"] = vlessFlow
 		}
 	}
@@ -1557,7 +1560,7 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 		}
 	}
 	uuid := clients[clientIndex].ID
-	vlessFlow := vlessFlowForShareLink(clients[clientIndex].Flow, inbound.Settings)
+	vlessFlow := vlessFlowForShareLink(clients[clientIndex].Flow, inbound)
 	port := inbound.Port
 	streamNetwork := stream["network"].(string)
 	params := make(map[string]string)
@@ -1643,7 +1646,7 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 		}
 		finalizeTLSQueryParams(tlsSetting, params)
 
-		if (streamNetwork == "tcp" || streamNetwork == "xhttp") && len(vlessFlow) > 0 {
+		if len(vlessFlow) > 0 {
 			params["flow"] = vlessFlow
 		}
 	}
@@ -1677,7 +1680,7 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 			params["spx"] = "/" + random.Seq(15)
 		}
 
-		if (streamNetwork == "tcp" || streamNetwork == "xhttp") && len(vlessFlow) > 0 {
+		if len(vlessFlow) > 0 {
 			params["flow"] = vlessFlow
 		}
 	}

@@ -2113,6 +2113,27 @@ func (s *NodeService) GetInboundNodeSubscriptionRows(inboundId int) ([]InboundNo
 	return out, nil
 }
 
+// CheckInboundPortConflictOnNodes returns an error when any target node already hosts
+// another inbound with the same port/listen (multi-node rule).
+func (s *NodeService) CheckInboundPortConflictOnNodes(port int, listen, protocol string, nodeIds []int, excludeInboundId int) error {
+	inbound := model.Inbound{Port: port, Listen: listen, Protocol: model.Protocol(protocol)}
+	for _, nodeId := range nodeIds {
+		if nodeId <= 0 {
+			continue
+		}
+		existingInbounds, err := s.GetInboundsForNode(nodeId)
+		if err != nil {
+			return fmt.Errorf("failed to get inbounds for node %d: %w", nodeId, err)
+		}
+		for _, existingInbound := range existingInbounds {
+			if existingInbound.Id != excludeInboundId && existingInbound.Port == inbound.Port && existingInbound.Listen == inbound.Listen && (existingInbound.Protocol == "hysteria2") == (inbound.Protocol == "hysteria2") {
+				return fmt.Errorf("node %d is already assigned to inbound %d with port %d. One node cannot be assigned to two inbounds with the same port", nodeId, existingInbound.Id, inbound.Port)
+			}
+		}
+	}
+	return nil
+}
+
 // AssignInboundToNode assigns an inbound to a node.
 func (s *NodeService) AssignInboundToNode(inboundId, nodeId int) error {
 	return s.AssignInboundToNodesWithBindings(inboundId, []InboundNodeBindingInput{{NodeId: nodeId}})
@@ -2145,19 +2166,8 @@ func (s *NodeService) AssignInboundToNodesWithBindings(inboundId int, bindings [
 		nodeIds = append(nodeIds, b.NodeId)
 	}
 
-	for _, nodeId := range nodeIds {
-		if nodeId <= 0 {
-			continue
-		}
-		existingInbounds, err := s.GetInboundsForNode(nodeId)
-		if err != nil {
-			return fmt.Errorf("failed to get inbounds for node %d: %w", nodeId, err)
-		}
-		for _, existingInbound := range existingInbounds {
-			if existingInbound.Id != inboundId && existingInbound.Port == inbound.Port && existingInbound.Listen == inbound.Listen && (existingInbound.Protocol == "hysteria2") == (inbound.Protocol == "hysteria2") {
-				return fmt.Errorf("node %d is already assigned to inbound %d with port %d. One node cannot be assigned to two inbounds with the same port", nodeId, existingInbound.Id, inbound.Port)
-			}
-		}
+	if err := s.CheckInboundPortConflictOnNodes(inbound.Port, inbound.Listen, string(inbound.Protocol), nodeIds, inboundId); err != nil {
+		return err
 	}
 
 	var oldMappings []model.InboundNodeMapping

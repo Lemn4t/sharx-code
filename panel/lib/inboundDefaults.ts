@@ -503,6 +503,29 @@ function xhttpHeadersFromXrayJson(raw: unknown): XhttpHeaderRow[] {
   return out;
 }
 
+/**
+ * XTLS flow (xtls-rprx-*) is only valid for TCP+TLS/REALITY or non-none VLESS Encryption — not XHTTP/WS/gRPC.
+ * @see https://xtls.github.io/ru/config/outbounds/vless.html
+ */
+export function vlessXtlsFlowAllowed(
+  stream: Pick<StreamFormState, "network" | "security">,
+  vlessEncryption: string,
+): boolean {
+  if (stream.network === "xhttp") return false;
+  if (stream.network !== "tcp") return false;
+  if (stream.security === "tls" || stream.security === "reality") return true;
+  const enc = vlessEncryption.trim();
+  return enc !== "" && enc !== "none";
+}
+
+export function effectiveVlessFlow(
+  stream: Pick<StreamFormState, "network" | "security">,
+  flow: string,
+  vlessEncryption: string,
+): string {
+  return vlessXtlsFlowAllowed(stream, vlessEncryption) ? flow.trim() : "";
+}
+
 function xhttpHeadersToV2Map(rows: XhttpHeaderRow[]): Record<string, string> {
   const o: Record<string, string> = {};
   for (const { name, value } of rows) {
@@ -1906,7 +1929,7 @@ export function mergeFirstClientIntoSettings(
   switch (protocol) {
     case "vless":
       first.id = typeof first.id === "string" && first.id ? first.id : newClientUUID();
-      first.flow = patch.vlessFlow.trim();
+      first.flow = patch.vlessFlow.trim(); // caller should pass effectiveVlessFlow() result
       root.decryption = patch.vlessDecryption || "none";
       root.encryption = patch.vlessEncryption || "none";
       break;

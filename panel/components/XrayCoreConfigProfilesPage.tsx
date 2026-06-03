@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { FileText, Pencil, Plus, Server, Trash2, Users } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -13,7 +13,9 @@ import {
 } from "@/components/xray/XrayConfigTemplateEditor";
 import {
   Button,
-  CheckboxField,
+  CheckboxOptionCard,
+  CheckboxOptionList,
+  SelectionListToolbar,
   ConfirmDialog,
   Input,
   Modal,
@@ -486,22 +488,34 @@ export function XrayCoreConfigProfilesPage() {
         }
       >
         <p className="mb-3 text-xs text-[var(--fg-subtle)]">{t("pages.xrayCoreConfigProfiles.assignNodesHint")}</p>
-        <div className="max-h-[50vh] space-y-2 overflow-y-auto">
-          {nodes.length === 0 ? (
-            <p className="text-sm text-[var(--fg-muted)]">
-              {t("pages.xrayCoreConfigProfiles.noNodesInPanel", { defaultValue: "No nodes yet." })}
-            </p>
-          ) : (
-            nodes.map((n) => (
-              <CheckboxField
-                key={n.id}
-                className="flex w-full rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 !text-sm shadow-sm"
-                label={
-                  <span>
-                    <span className="font-medium text-[var(--fg)]">{n.name}</span>{" "}
-                    <span className="text-[var(--fg-subtle)]">({n.address})</span>
-                  </span>
+        {nodes.length === 0 ? (
+          <p className="text-sm text-[var(--fg-muted)]">
+            {t("pages.xrayCoreConfigProfiles.noNodesInPanel", { defaultValue: "No nodes yet." })}
+          </p>
+        ) : (
+          <CheckboxOptionList
+            layout="grid"
+            header={
+              <SelectionListToolbar
+                selectedCount={nodes.filter((n) => assignSelected[n.id]).length}
+                totalCount={nodes.length}
+                onSelectAll={() =>
+                  setAssignSelected(Object.fromEntries(nodes.map((n) => [n.id, true])))
                 }
+                onSelectNone={() => setAssignSelected({})}
+                selectAllLabel={t("pages.xrayCoreConfigProfiles.selectAllNodes", {
+                  defaultValue: "Select all",
+                })}
+                selectNoneLabel={t("pages.xrayCoreConfigProfiles.selectNoneNodes", {
+                  defaultValue: "Clear",
+                })}
+              />
+            }
+          >
+            {nodes.map((n) => (
+              <CheckboxOptionCard
+                key={n.id}
+                icon={Server}
                 checked={Boolean(assignSelected[n.id])}
                 onChange={(e) =>
                   setAssignSelected((prev) => ({
@@ -509,10 +523,12 @@ export function XrayCoreConfigProfilesPage() {
                     [n.id]: e.target.checked,
                   }))
                 }
+                heading={n.name}
+                description={n.address}
               />
-            ))
-          )}
-        </div>
+            ))}
+          </CheckboxOptionList>
+        )}
       </Modal>
 
       <Modal

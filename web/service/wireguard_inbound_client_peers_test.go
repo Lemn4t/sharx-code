@@ -24,7 +24,7 @@ func TestMergeWireGuardSettingsWithClients_createsPeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	clients := []*model.ClientEntity{
-		{Email: "u1@t.com", Enable: true, Status: "active"},
+		{Name: "u1@t.com", Enable: true, Status: "active"},
 	}
 	if err := mergeWireGuardSettingsWithClients(settings, clients); err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestMergeWireGuardSettingsWithClients_preservesKeysWhenClientDisabled(t *te
 		t.Fatal(err)
 	}
 	active := []*model.ClientEntity{
-		{Email: "u1@t.com", Enable: true, Status: "active"},
+		{Name: "u1@t.com", Enable: true, Status: "active"},
 	}
 	if err := mergeWireGuardSettingsWithClients(settings, active); err != nil {
 		t.Fatal(err)
@@ -83,7 +83,7 @@ func TestMergeWireGuardSettingsWithClients_preservesKeysWhenClientDisabled(t *te
 	}
 
 	disabled := []*model.ClientEntity{
-		{Email: "u1@t.com", Enable: false, Status: "active"},
+		{Name: "u1@t.com", Enable: false, Status: "active"},
 	}
 	if err := mergeWireGuardSettingsWithClients(settings, disabled); err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestMergeWireGuardSettingsWithClients_preservesKeysWhenClientDisabled(t *te
 	}
 
 	enabledAgain := []*model.ClientEntity{
-		{Email: "u1@t.com", Enable: true, Status: "active"},
+		{Name: "u1@t.com", Enable: true, Status: "active"},
 	}
 	if err := mergeWireGuardSettingsWithClients(settings, enabledAgain); err != nil {
 		t.Fatal(err)

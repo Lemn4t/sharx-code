@@ -166,7 +166,10 @@ func (a *InboundController) previewInboundXray(c *gin.Context) {
 
 	settingService := service.SettingService{}
 	multiMode, _ := settingService.GetMultiNodeMode()
-	inbound.Tag = a.inboundService.GenerateInboundTag(inbound, multiMode)
+	if _, err := a.inboundService.AssignInboundTag(inbound, multiMode); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
 
 	cfg, err := a.xrayService.PreviewInboundCoreConfig(inbound)
 	if err != nil {
@@ -214,7 +217,10 @@ func (a *InboundController) previewInboundTelemt(c *gin.Context) {
 
 	settingService := service.SettingService{}
 	multiMode, _ := settingService.GetMultiNodeMode()
-	inbound.Tag = a.inboundService.GenerateInboundTag(inbound, multiMode)
+	if _, err := a.inboundService.AssignInboundTag(inbound, multiMode); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
 
 	tomlStr, err := service.PreviewTelemtToml(inbound)
 	if err != nil {
@@ -405,23 +411,41 @@ func (a *InboundController) addInbound(c *gin.Context) {
 
 	user := session.GetLoginUser(c)
 	inbound.UserId = user.Id
-	// Tag will be generated in AddInbound service based on multi-node mode
-	// For now, set a temporary tag (will be updated after creation if multi-node mode)
+
 	settingService := service.SettingService{}
 	multiMode, _ := settingService.GetMultiNodeMode()
+
+	nodeService := service.NodeService{}
 	if multiMode {
-		// In multi-node mode, use port temporarily (will be updated with ID after creation)
-		if inbound.Listen == "" || inbound.Listen == "0.0.0.0" || inbound.Listen == "::" || inbound.Listen == "::0" {
-			inbound.Tag = fmt.Sprintf("inbound-%v", inbound.Port)
+		var preCheckNodeIds []int
+		if hasNodeBindingsInJSON {
+			for _, b := range nodeBindingsFromJSON {
+				if b.NodeId > 0 {
+					preCheckNodeIds = append(preCheckNodeIds, b.NodeId)
+				}
+			}
+		} else if hasNodeIdsInJSON {
+			preCheckNodeIds = append(preCheckNodeIds, nodeIdsFromJSON...)
+		} else if hasNodeIdInJSON && nodeIdFromJSON != nil && *nodeIdFromJSON > 0 {
+			preCheckNodeIds = append(preCheckNodeIds, *nodeIdFromJSON)
 		} else {
-			inbound.Tag = fmt.Sprintf("inbound-%v:%v", inbound.Listen, inbound.Port)
+			for _, idStr := range c.PostFormArray("nodeIds") {
+				if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
+					preCheckNodeIds = append(preCheckNodeIds, id)
+				}
+			}
+			if nodeIdStr := c.PostForm("nodeId"); nodeIdStr != "" && nodeIdStr != "null" {
+				if parsedId, err := strconv.Atoi(nodeIdStr); err == nil && parsedId > 0 {
+					preCheckNodeIds = append(preCheckNodeIds, parsedId)
+				}
+			}
 		}
-	} else {
-		// Single-node mode: use port (and listen address if specified)
-		if inbound.Listen == "" || inbound.Listen == "0.0.0.0" || inbound.Listen == "::" || inbound.Listen == "::0" {
-			inbound.Tag = fmt.Sprintf("inbound-%v", inbound.Port)
-		} else {
-			inbound.Tag = fmt.Sprintf("inbound-%v:%v", inbound.Listen, inbound.Port)
+		if len(preCheckNodeIds) > 0 {
+			if err := nodeService.CheckInboundPortConflictOnNodes(inbound.Port, inbound.Listen, string(inbound.Protocol), preCheckNodeIds, 0); err != nil {
+				logger.Errorf("Inbound port conflict on nodes: %v", err)
+				jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+				return
+			}
 		}
 	}
 
@@ -433,7 +457,14 @@ func (a *InboundController) addInbound(c *gin.Context) {
 	}
 
 	// Handle node assignment in multi-node mode
-	nodeService := service.NodeService{}
+	rollbackInboundOnAssignError := func(assignErr error) {
+		if assignErr == nil || inbound == nil || inbound.Id <= 0 {
+			return
+		}
+		if _, delErr := a.inboundService.DelInbound(inbound.Id); delErr != nil {
+			logger.Warningf("Failed to roll back inbound %d after assignment error: %v", inbound.Id, delErr)
+		}
+	}
 
 	// Get nodeIds from form (for form-encoded requests)
 	nodeIdsStr := c.PostFormArray("nodeIds")
@@ -449,6 +480,7 @@ func (a *InboundController) addInbound(c *gin.Context) {
 	if hasNodeBindingsInJSON {
 		if err := nodeService.AssignInboundToNodesWithBindings(inbound.Id, nodeBindingsFromJSON); err != nil {
 			logger.Errorf("Failed to assign inbound %d with node bindings: %v", inbound.Id, err)
+			rollbackInboundOnAssignError(err)
 			jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 			return
 		}
@@ -481,13 +513,17 @@ func (a *InboundController) addInbound(c *gin.Context) {
 			// Assign to multiple nodes
 			if err := nodeService.AssignInboundToNodes(inbound.Id, nodeIds); err != nil {
 				logger.Errorf("Failed to assign inbound %d to nodes %v: %v", inbound.Id, nodeIds, err)
+				rollbackInboundOnAssignError(err)
 				jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 				return
 			}
 		} else if nodeId != nil && *nodeId > 0 {
 			// Backward compatibility: single nodeId
 			if err := nodeService.AssignInboundToNode(inbound.Id, *nodeId); err != nil {
-				logger.Warningf("Failed to assign inbound %d to node %d: %v", inbound.Id, *nodeId, err)
+				logger.Errorf("Failed to assign inbound %d to node %d: %v", inbound.Id, *nodeId, err)
+				rollbackInboundOnAssignError(err)
+				jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+				return
 			}
 		}
 	}
@@ -941,25 +977,6 @@ func (a *InboundController) importInbound(c *gin.Context) {
 	user := session.GetLoginUser(c)
 	inbound.Id = 0
 	inbound.UserId = user.Id
-	// Tag will be generated in AddInbound service based on multi-node mode
-	// For now, set a temporary tag (will be updated after creation if multi-node mode)
-	settingService := service.SettingService{}
-	multiMode, _ := settingService.GetMultiNodeMode()
-	if multiMode {
-		// In multi-node mode, use port temporarily (will be updated with ID after creation)
-		if inbound.Listen == "" || inbound.Listen == "0.0.0.0" || inbound.Listen == "::" || inbound.Listen == "::0" {
-			inbound.Tag = fmt.Sprintf("inbound-%v", inbound.Port)
-		} else {
-			inbound.Tag = fmt.Sprintf("inbound-%v:%v", inbound.Listen, inbound.Port)
-		}
-	} else {
-		// Single-node mode: use port (and listen address if specified)
-		if inbound.Listen == "" || inbound.Listen == "0.0.0.0" || inbound.Listen == "::" || inbound.Listen == "::0" {
-			inbound.Tag = fmt.Sprintf("inbound-%v", inbound.Port)
-		} else {
-			inbound.Tag = fmt.Sprintf("inbound-%v:%v", inbound.Listen, inbound.Port)
-		}
-	}
 
 	for index := range inbound.ClientStats {
 		inbound.ClientStats[index].Id = 0

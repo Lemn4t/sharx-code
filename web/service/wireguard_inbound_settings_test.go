@@ -146,6 +146,17 @@ func TestPreserveWireGuardPeersOnInboundUpdate_restoresInactiveVaultWithPeers(t 
 	}
 }
 
+func TestSanitizeWireGuardSettingsJSONForXray_setsEmailFromPanelName(t *testing.T) {
+	raw := `{"peers":[{"publicKey":"abc","name":"client1","privateKey":"secret"}]}`
+	out := SanitizeWireGuardSettingsJSONForXray(raw)
+	if !strings.Contains(out, `"email":"client1"`) {
+		t.Fatalf("expected email on peer for Xray stats: %s", out)
+	}
+	if strings.Contains(out, `"privateKey"`) || strings.Contains(out, `"name"`) {
+		t.Fatalf("panel-only fields must be stripped: %s", out)
+	}
+}
+
 func TestSanitizeWireGuardSettingsJSONForXray(t *testing.T) {
 	raw := fmt.Sprintf(`{"mtu":1420,"secretKey":"x","address":["10.8.0.1/24"],"peers":[{"publicKey":"pk","privateKey":"sk","email":"a@b"}],"%s":[{"publicKey":"p2"}]}`,
 		PanelWireGuardInactivePeersSettingsKey)

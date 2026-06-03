@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Building2, Layers, Pencil, Plus, Trash2, Users } from "lucide-react";
 import type { TextareaHTMLAttributes } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,7 +10,10 @@ import { PageScaffold, PageHeader, Surface } from "@/components/panel";
 import {
   Button,
   CheckboxField,
+  CheckboxOptionCard,
+  CheckboxOptionList,
   ConfirmDialog,
+  SelectionListToolbar,
   IconTile,
   Input,
   Modal,
@@ -728,10 +731,31 @@ export function GroupsPage() {
             {inbounds.length === 0 ? (
               <p className="text-xs text-[var(--fg-subtle)]">{t("noData")}</p>
             ) : (
-              <div className="max-h-60 space-y-2 overflow-auto rounded-xl border border-[var(--border)] p-3">
+              <CheckboxOptionList
+                layout="grid"
+                header={
+                  <SelectionListToolbar
+                    selectedCount={inbounds.filter((ib) => inboundIds[ib.id]).length}
+                    totalCount={inbounds.length}
+                    onSelectAll={() =>
+                      setInboundIds(
+                        Object.fromEntries(inbounds.map((ib) => [ib.id, true])),
+                      )
+                    }
+                    onSelectNone={() => setInboundIds({})}
+                    selectAllLabel={t("pages.groups.selectAllInbounds", {
+                      defaultValue: "Select all",
+                    })}
+                    selectNoneLabel={t("pages.groups.selectNoneInbounds", {
+                      defaultValue: "Clear",
+                    })}
+                  />
+                }
+              >
                 {inbounds.map((ib) => (
-                  <CheckboxField
+                  <CheckboxOptionCard
                     key={ib.id}
+                    icon={Layers}
                     checked={!!inboundIds[ib.id]}
                     onChange={(e) =>
                       setInboundIds((m) => ({
@@ -739,10 +763,11 @@ export function GroupsPage() {
                         [ib.id]: e.target.checked,
                       }))
                     }
-                    label={`${ib.remark} · ${ib.protocol} · ${ib.port}`}
+                    heading={ib.remark?.trim() || `Inbound ${ib.id}`}
+                    description={`${ib.protocol} · :${ib.port}`}
                   />
                 ))}
-              </div>
+              </CheckboxOptionList>
             )}
           </div>
         ) : null}

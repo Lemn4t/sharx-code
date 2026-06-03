@@ -367,12 +367,25 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 	}
 	hyCert, _ := s.settingService.GetCertFile()
 	hyKey, _ := s.settingService.GetKeyFile()
+	clientService := ClientService{}
 	for _, inbound := range inbounds {
 		if !inbound.Enable {
 			continue
 		}
 		if !model.IsXrayInboundProtocol(inbound.Protocol) {
 			continue
+		}
+		// WireGuard peers live in settings.peers (not clients[]). Rebuild from ClientEntity so
+		// standalone Xray always gets active peers with email for user>>> stats.
+		if model.NormalizeProtocol(inbound.Protocol) == model.WireGuard {
+			clientEntities, err := clientService.GetClientsForInbound(inbound.Id)
+			if err == nil {
+				if built, err := s.inboundService.BuildSettingsFromClientEntities(inbound, clientEntities); err == nil {
+					inbound.Settings = built
+				} else {
+					logger.Warningf("GetXrayConfig: wireguard inbound %d settings build: %v", inbound.Id, err)
+				}
+			}
 		}
 		if err := ApplyPanelInboundTransformsForXray(inbound); err != nil {
 			return nil, err

@@ -265,6 +265,46 @@ func (s *ClientService) GetInboundIdsForClient(clientId int) ([]int, error) {
 
 // vlessFlowFromAssignedInboundList returns VLESS flow from the first assigned VLESS inbound (lowest
 // inbound id first). Flow is read only from that inbound's settings JSON.
+func (s *ClientService) xrayUserPayloadForInbound(client *model.ClientEntity, inbound *model.Inbound) map[string]interface{} {
+	clientData := make(map[string]interface{})
+	clientData["email"] = client.Name
+	switch inbound.Protocol {
+	case model.Trojan:
+		clientData["password"] = client.Password
+	case model.Mixed:
+		clientData["password"] = client.Password
+		u := client.Name
+		if i := strings.IndexByte(u, '@'); i > 0 {
+			u = u[:i]
+		}
+		if u == "" {
+			u = "user"
+		}
+		clientData["user"] = u
+		clientData["pass"] = client.Password
+	case model.Hysteria, model.Hysteria2:
+		clientData["auth"] = client.Password
+	case model.Shadowsocks:
+		var settings map[string]interface{}
+		json.Unmarshal([]byte(inbound.Settings), &settings)
+		if method, ok := settings["method"].(string); ok {
+			clientData["method"] = method
+		}
+		clientData["password"] = client.Password
+	case model.VMESS, model.VLESS:
+		clientData["id"] = client.UUID
+		if inbound.Protocol == model.VMESS && client.Security != "" {
+			clientData["security"] = client.Security
+		}
+		if inbound.Protocol == model.VLESS {
+			if f := VLESSEffectiveFlow(inbound.Settings, inbound.StreamSettings, inbound.Protocol); f != "" {
+				clientData["flow"] = f
+			}
+		}
+	}
+	return clientData
+}
+
 func (s *ClientService) vlessFlowFromAssignedInboundList(inboundIds []int) string {
 	if len(inboundIds) == 0 {
 		return ""
@@ -280,7 +320,7 @@ func (s *ClientService) vlessFlowFromAssignedInboundList(inboundIds []int) strin
 		if model.NormalizeProtocol(in.Protocol) != model.VLESS {
 			continue
 		}
-		return VLESSFlowFromInboundSettings(in.Settings)
+		return VLESSEffectiveFlow(in.Settings, in.StreamSettings, in.Protocol)
 	}
 	return ""
 }
@@ -412,11 +452,15 @@ func (s *ClientService) AddClient(userId int, client *model.ClientEntity) (bool,
 		return false, err
 	}
 
-	// Now update Settings for all assigned inbounds
-	// This is done AFTER committing the client transaction to avoid nested transactions and database locks
+	// Sync assigned inbounds: persist settings in DB, add user via API (no full inbound replace / restart).
 	needRestart := false
 	if len(client.InboundIds) > 0 {
 		inboundService := InboundService{}
+		settingService := SettingService{}
+		multiMode, _ := settingService.GetMultiNodeMode()
+		nodeService := NodeService{}
+		xrayService := XrayService{}
+
 		for _, inboundId := range client.InboundIds {
 			inbound, err := inboundService.GetInbound(inboundId)
 			if err != nil {
@@ -424,28 +468,79 @@ func (s *ClientService) AddClient(userId int, client *model.ClientEntity) (bool,
 				continue
 			}
 
-			// Get all clients for this inbound (from ClientEntity)
 			clientEntities, err := s.GetClientsForInbound(inboundId)
 			if err != nil {
 				logger.Warningf("Failed to get clients for inbound %d: %v", inboundId, err)
 				continue
 			}
 
-			// Rebuild Settings from ClientEntity
 			newSettings, err := inboundService.BuildSettingsFromClientEntities(inbound, clientEntities)
 			if err != nil {
 				logger.Warningf("Failed to build settings for inbound %d: %v", inboundId, err)
 				continue
 			}
-
-			// Update inbound Settings (this will open its own transaction)
-			// Use retry logic to handle database lock errors
+			if err := inboundService.updateInboundSettingsDBOnly(inboundId, newSettings); err != nil {
+				logger.Warningf("Failed to persist inbound %d settings: %v", inboundId, err)
+				continue
+			}
 			inbound.Settings = newSettings
-			_, inboundNeedRestart, err := inboundService.updateInboundWithRetry(inbound)
-			if err != nil {
-				logger.Warningf("Failed to update inbound %d settings: %v", inboundId, err)
-				// Continue with other inbounds
-			} else if inboundNeedRestart {
+
+			if !client.Enable {
+				continue
+			}
+
+			if model.NormalizeProtocol(inbound.Protocol) == model.Telemt {
+				needRestart = true
+				continue
+			}
+			if !model.IsXrayInboundProtocol(inbound.Protocol) {
+				continue
+			}
+			// WireGuard has no AlterInbound AddUser; push full inbound (peers) via UpdateInbound.
+			if model.NormalizeProtocol(inbound.Protocol) == model.WireGuard {
+				_, inboundNeedRestart, err := inboundService.updateInboundWithRetry(inbound)
+				if err != nil {
+					logger.Warningf("AddClient: failed to sync wireguard inbound %d: %v", inboundId, err)
+					needRestart = true
+				} else if inboundNeedRestart {
+					needRestart = true
+				}
+				continue
+			}
+
+			clientData := s.xrayUserPayloadForInbound(client, inbound)
+			if multiMode {
+				nodes, err := nodeService.GetNodesForInbound(inboundId)
+				if err != nil || len(nodes) == 0 {
+					needRestart = true
+					continue
+				}
+				for _, node := range nodes {
+					if err := nodeService.AddUserToNode(node, string(inbound.Protocol), inbound.Tag, clientData); err != nil {
+						logger.Warningf("AddClient: failed to add client %s to node %s via API: %v", client.Name, node.Name, err)
+						needRestart = true
+					} else {
+						logger.Infof("AddClient: added client %s to node %s via API (instant)", client.Name, node.Name)
+					}
+				}
+			} else if xrayService.IsXrayRunning() {
+				apiPort := p.GetAPIPort()
+				api, err := inboundService.getXrayAPI(apiPort)
+				if err != nil {
+					needRestart = true
+					continue
+				}
+				if err := api.AddUser(string(inbound.Protocol), inbound.Tag, clientData); err != nil {
+					if strings.Contains(err.Error(), "already exists") {
+						logger.Debugf("AddClient: client %s already exists in Xray (tag: %s)", client.Name, inbound.Tag)
+					} else {
+						logger.Warningf("AddClient: failed to add client %s to Xray (tag: %s): %v", client.Name, inbound.Tag, err)
+						needRestart = true
+					}
+				} else {
+					logger.Infof("AddClient: added client %s to Xray (tag: %s) via API", client.Name, inbound.Tag)
+				}
+			} else {
 				needRestart = true
 			}
 		}
@@ -729,6 +824,17 @@ func (s *ClientService) UpdateClient(userId int, client *model.ClientEntity) (bo
 
 		// Check if enable status changed
 		enableChanged := existing.Enable != finalClient.Enable
+		inboundAssignmentsChanged := client.InboundIds != nil
+		settingsAffectingChange := enableChanged ||
+			inboundAssignmentsChanged ||
+			existing.UUID != finalClient.UUID ||
+			existing.Password != finalClient.Password ||
+			existing.Security != finalClient.Security ||
+			!strings.EqualFold(existing.Name, finalClient.Name)
+		if !settingsAffectingChange {
+			logger.Debugf("UpdateClient: skipping inbound/Xray sync (metadata-only change), clientId=%d", client.Id)
+			return
+		}
 		wasExpired := existing.Status == "expired_traffic" || existing.Status == "expired_time"
 
 		// Check if client is no longer expired (by traffic or time)
@@ -812,7 +918,7 @@ func (s *ClientService) UpdateClient(userId int, client *model.ClientEntity) (bo
 									clientData["security"] = finalClient.Security
 								}
 								if inbound.Protocol == model.VLESS {
-									if f := VLESSFlowFromInboundSettings(inbound.Settings); f != "" {
+									if f := VLESSEffectiveFlow(inbound.Settings, inbound.StreamSettings, inbound.Protocol); f != "" {
 										clientData["flow"] = f
 									}
 								}
@@ -1526,7 +1632,7 @@ func (s *ClientService) ResetAllClientTraffics(userId int) (bool, error) {
 							clientData["security"] = client.Security
 						}
 						if inbound.Protocol == model.VLESS {
-							if f := VLESSFlowFromInboundSettings(inbound.Settings); f != "" {
+							if f := VLESSEffectiveFlow(inbound.Settings, inbound.StreamSettings, inbound.Protocol); f != "" {
 								clientData["flow"] = f
 							}
 						}
@@ -1668,7 +1774,7 @@ func (s *ClientService) ResetClientTraffic(userId int, clientId int) (bool, erro
 							clientData["security"] = client.Security
 						}
 						if inbound.Protocol == model.VLESS {
-							if f := VLESSFlowFromInboundSettings(inbound.Settings); f != "" {
+							if f := VLESSEffectiveFlow(inbound.Settings, inbound.StreamSettings, inbound.Protocol); f != "" {
 								clientData["flow"] = f
 							}
 						}
@@ -2036,7 +2142,7 @@ func (s *ClientService) BulkResetTraffic(userId int, clientIds []int) (bool, err
 							clientData["security"] = client.Security
 						}
 						if inbound.Protocol == model.VLESS {
-							if f := VLESSFlowFromInboundSettings(inbound.Settings); f != "" {
+							if f := VLESSEffectiveFlow(inbound.Settings, inbound.StreamSettings, inbound.Protocol); f != "" {
 								clientData["flow"] = f
 							}
 						}
@@ -2316,7 +2422,7 @@ func (s *ClientService) BulkEnable(userId int, clientIds []int, enable bool) (bo
 								clientData["security"] = client.Security
 							}
 							if inbound.Protocol == model.VLESS {
-								if f := VLESSFlowFromInboundSettings(inbound.Settings); f != "" {
+								if f := VLESSEffectiveFlow(inbound.Settings, inbound.StreamSettings, inbound.Protocol); f != "" {
 									clientData["flow"] = f
 								}
 							}

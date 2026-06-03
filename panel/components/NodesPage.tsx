@@ -45,6 +45,7 @@ import { PageScaffold, PageHeader, SectionHelpModal, Surface } from "@/component
 import {
   Button,
   CheckboxField,
+  RadioOptionCard,
   HelpTooltip,
   IconTile,
   Input,
@@ -1652,28 +1653,22 @@ export function NodesPage() {
             ) : (
               <div className="flex max-h-64 flex-col gap-2 overflow-y-auto pr-1" role="radiogroup">
                 {profileList.map((pr) => (
-                  <label
+                  <RadioOptionCard
                     key={pr.id}
-                    className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
-                      selectedProfileId === pr.id
-                        ? "border-[var(--accent)] bg-[color-mix(in_oklab,var(--accent)_10%,transparent)]"
-                        : "border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[var(--fg-subtle)]"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="node-xray-profile"
-                      className="shrink-0"
-                      checked={selectedProfileId === pr.id}
-                      onChange={() => setSelectedProfileId(pr.id)}
-                    />
-                    <span className="min-w-0 font-medium text-[var(--fg)]">
-                      {pr.name}
-                      {pr.isDefault
-                        ? ` ${t("pages.nodes.profileDefaultTag")}`
-                        : ""}
-                    </span>
-                  </label>
+                    name="node-xray-profile"
+                    checked={selectedProfileId === pr.id}
+                    onChange={() => setSelectedProfileId(pr.id)}
+                    heading={
+                      <>
+                        {pr.name}
+                        {pr.isDefault ? (
+                          <span className="ml-1.5 font-normal text-[var(--accent)]">
+                            {t("pages.nodes.profileDefaultTag")}
+                          </span>
+                        ) : null}
+                      </>
+                    }
+                  />
                 ))}
               </div>
             )}

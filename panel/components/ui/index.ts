@@ -12,6 +12,12 @@ export { IconTile, type IconTileTone } from "./icon-tile";
 export { PillTag } from "./pill-tag";
 export { IconButton } from "./icon-button";
 export { CheckboxField, Checkbox, checkboxControlClass } from "./checkbox-field";
+export {
+  CheckboxOptionCard,
+  CheckboxOptionList,
+  RadioOptionCard,
+  SelectionListToolbar,
+} from "./checkbox-option";
 export { ToastProvider, useToast } from "./toast-provider";
 export { ConfirmDialog } from "./confirm-dialog";
 export { Tabs, TabPanels, type TabItem } from "./tabs";

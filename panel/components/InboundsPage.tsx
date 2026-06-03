@@ -25,6 +25,8 @@ import {
   buildSettingsJson,
   buildSniffingFromForm,
   buildStreamSettingsFromForm,
+  effectiveVlessFlow,
+  vlessXtlsFlowAllowed,
   buildTelemtSettingsJson,
   buildWireguardInboundApiPayload,
   defaultTelemtForm,
@@ -67,13 +69,29 @@ import {
 } from "@/lib/nameFlag";
 import { usePanelWebSocket } from "@/lib/panelWebSocket";
 import { panel } from "@/lib/paths";
+import { suggestInboundTag, validateInboundTagInput } from "@/lib/inboundTag";
 import { CompareModeFilterField, type CompareOp } from "@/components/CompareModeFilterField";
+import {
+  buildInboundJsonDraftFromForm,
+  InboundJsonEditor,
+  type InboundJsonDraft,
+} from "@/components/inbounds/InboundJsonEditor";
 import { InboundTlsCertPinBlock } from "@/components/inbounds/InboundTlsCertPinBlock";
+import {
+  inboundSettingsJsonEditorSupported,
+  mergeInboundServerSettingsJson,
+  roundTripInboundSniffing,
+  roundTripInboundStreamSettings,
+  serverSettingsJsonToFormPatch,
+} from "@/lib/inboundJsonSanitize";
 import { PageScaffold, PageHeader, SectionHelpModal, Surface } from "@/components/panel";
 import {
   Button,
   CheckboxField,
+  CheckboxOptionCard,
+  CheckboxOptionList,
   ConfirmDialog,
+  SelectionListToolbar,
   IconButton,
   IconTile,
   Input,
@@ -120,6 +138,7 @@ function InboundFormSection({
 type Row = {
   id: number;
   remark: string;
+  tag: string;
   protocol: string;
   port: number;
   up: number;
@@ -139,6 +158,7 @@ function inboundsPayloadToRows(raw: unknown): Row[] {
     out.push({
       id: o.id,
       remark: String(o.remark ?? ""),
+      tag: String(o.tag ?? ""),
       protocol: String(o.protocol ?? ""),
       port: typeof o.port === "number" ? o.port : 0,
       up: Number(o.up) || 0,
@@ -154,14 +174,15 @@ function cx(...parts: (string | false | undefined | null)[]): string {
   return parts.filter(Boolean).join(" ");
 }
 
-type InboundSortKey = "id" | "remark" | "protocol" | "port" | "used" | "status";
+type InboundSortKey = "id" | "remark" | "tag" | "protocol" | "port" | "used" | "status";
 type SortDir = "asc" | "desc";
 type InboundFilterStatus = "" | "enabled" | "disabled";
 
-type InboundColumnFilterId = "remark" | "protocol" | "port" | "traffic";
+type InboundColumnFilterId = "remark" | "tag" | "protocol" | "port" | "traffic";
 
 const INBOUND_DEFAULT_FILTERS: Record<InboundColumnFilterId, string> = {
   remark: "",
+  tag: "",
   protocol: "",
   port: "",
   traffic: "",
@@ -217,6 +238,9 @@ function compareInbounds(
       break;
     case "remark":
       c = a.remark.localeCompare(b.remark, undefined, { sensitivity: "base" });
+      break;
+    case "tag":
+      c = a.tag.localeCompare(b.tag, undefined, { sensitivity: "base" });
       break;
     case "protocol":
       c = a.protocol.localeCompare(b.protocol, undefined, { sensitivity: "base" });
@@ -365,6 +389,7 @@ function inboundBindingsToForm(ib: {
 type InboundDetail = {
   id: number;
   remark: string;
+  tag?: string;
   protocol: string;
   port: number;
   listen?: string;
@@ -530,6 +555,7 @@ const PROTOCOL_TONE: Record<string, "accent" | "info" | "warning" | "success" | 
 const defaultForm = () => ({
   nameFlag: "",
   remark: "",
+  tag: "",
   port: randomPort(),
   listen: "",
   enable: true,
@@ -562,9 +588,15 @@ export function InboundsPage() {
   const [toggleEnableBusyId, setToggleEnableBusyId] = useState<number | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [inboundModalView, setInboundModalView] = useState<"form" | "json">(
+  const [inboundModalView, setInboundModalView] = useState<"form" | "json" | "preview">(
     "form",
   );
+  const [jsonDraft, setJsonDraft] = useState<InboundJsonDraft>({
+    stream: "{}",
+    sniffing: defaultSniffingString(),
+    settings: "{}",
+  });
+  const [jsonDraftDirty, setJsonDraftDirty] = useState(false);
   const [xrayPreviewText, setXrayPreviewText] = useState<string | null>(null);
   const [xrayPreviewLoading, setXrayPreviewLoading] = useState(false);
   const [xrayPreviewError, setXrayPreviewError] = useState<string | null>(null);
@@ -675,6 +707,12 @@ export function InboundsPage() {
     setStep("basics");
     setPreserveTraffic({ up: 0, down: 0, allTime: 0 });
     setInboundModalView("form");
+    setJsonDraftDirty(false);
+    setJsonDraft({
+      stream: defaultStreamSettingsString(),
+      sniffing: defaultSniffingString(),
+      settings: "{}",
+    });
   }, []);
 
   const openAdd = () => {
@@ -710,15 +748,27 @@ export function InboundsPage() {
       const { flag: nameFlag, text: remarkText } = splitNameFlag(
         ib.remark ?? "",
       );
+      const streamForm = parseStreamSettingsToForm(
+        proto === "telemt"
+          ? "{}"
+          : (ib.streamSettings || defaultStreamSettingsString()),
+        proto,
+      );
+      const vlessEncryption = parsed.vlessEncryption ?? "";
+      const vlessFlow =
+        proto === "vless"
+          ? effectiveVlessFlow(streamForm, parsed.vlessFlow ?? "", vlessEncryption)
+          : (parsed.vlessFlow ?? "");
       setForm({
         nameFlag,
         remark: remarkText,
+        tag: ib.tag ?? "",
         port: ib.port,
         listen: ib.listen ?? "",
         enable: ib.enable,
         protocol: proto,
-        vlessFlow: parsed.vlessFlow ?? "",
-        vlessEncryption: parsed.vlessEncryption ?? "",
+        vlessFlow,
+        vlessEncryption,
         vlessDecryption: parsed.vlessDecryption ?? "none",
         trojanPassword: parsed.trojanPassword ?? randomPassword(12),
         hysteriaAuth: parsed.hysteriaAuth ?? randomPassword(8),
@@ -736,12 +786,7 @@ export function InboundsPage() {
             : defaultTelemtForm(),
         totalGb: totalBytesToGbInput(ib.total ?? 0),
         trafficReset: ib.trafficReset || "never",
-        streamForm: parseStreamSettingsToForm(
-          proto === "telemt"
-            ? "{}"
-            : (ib.streamSettings || defaultStreamSettingsString()),
-          proto,
-        ),
+        streamForm,
         sniffingForm: parseSniffingToForm(
           proto === "telemt"
             ? '{"enabled":false,"destOverride":[],"metadataOnly":false,"routeOnly":false}'
@@ -849,10 +894,33 @@ export function InboundsPage() {
     key: K,
     value: StreamFormState[K],
   ) => {
-    setForm((f) => ({
-      ...f,
-      streamForm: { ...f.streamForm, [key]: value },
-    }));
+    setForm((f) => {
+      const streamForm = { ...f.streamForm, [key]: value };
+      let vlessFlow = f.vlessFlow;
+      if (f.protocol === "vless") {
+        if (key === "network" && value === "xhttp") {
+          vlessFlow = "";
+        }
+        if (!vlessXtlsFlowAllowed(streamForm, f.vlessEncryption)) {
+          vlessFlow = "";
+        }
+      }
+      return { ...f, streamForm, vlessFlow };
+    });
+  };
+
+  const applyVlessFlowChange = (flow: string) => {
+    setForm((f) => {
+      if (f.protocol !== "vless") {
+        return { ...f, vlessFlow: flow };
+      }
+      let streamForm = f.streamForm;
+      if (flow.trim() !== "" && streamForm.network === "xhttp") {
+        streamForm = { ...streamForm, network: "tcp" };
+      }
+      const vlessFlow = effectiveVlessFlow(streamForm, flow, f.vlessEncryption);
+      return { ...f, vlessFlow, streamForm };
+    });
   };
 
   const addXhttpHeader = () => {
@@ -961,16 +1029,49 @@ export function InboundsPage() {
     }));
   };
 
+  const syncJsonDraftFromForm = useCallback(() => {
+    setJsonDraft(
+      buildInboundJsonDraftFromForm({
+        protocol: form.protocol,
+        streamForm: form.streamForm,
+        sniffingForm: form.sniffingForm,
+        baselineSettings,
+      }),
+    );
+    setJsonDraftDirty(false);
+  }, [baselineSettings, form.protocol, form.sniffingForm, form.streamForm]);
+
+  const useJsonDraftOnSubmit =
+    inboundModalView === "json" || jsonDraftDirty;
+
   const buildInboundSubmitBody = useCallback(():
     | { ok: true; body: Record<string, unknown> }
     | { ok: false; message: string } => {
     if (!form.port || form.port < 1 || form.port > 65535) {
       return { ok: false, message: t("pages.inbounds.port") + ": 1–65535" };
     }
+    const tagTrim = form.tag.trim();
+    const tagValidation = validateInboundTagInput(tagTrim);
+    if (tagValidation) {
+      return { ok: false, message: tagValidation };
+    }
     const isTelemt = form.protocol === "telemt";
-    const streamSettingsStr = isTelemt
+    let streamSettingsStr = isTelemt
       ? "{}"
       : buildStreamSettingsFromForm(form.streamForm, form.protocol);
+    if (useJsonDraftOnSubmit && !isTelemt) {
+      const rt = roundTripInboundStreamSettings(jsonDraft.stream, form.protocol);
+      if (!rt.ok) {
+        return { ok: false, message: rt.message };
+      }
+      streamSettingsStr = rt.json;
+    } else if (!isTelemt) {
+      const rt = roundTripInboundStreamSettings(streamSettingsStr, form.protocol);
+      if (!rt.ok) {
+        return { ok: false, message: rt.message };
+      }
+      streamSettingsStr = rt.json;
+    }
     let streamObj: unknown;
     let sniffObj: unknown;
     try {
@@ -978,7 +1079,7 @@ export function InboundsPage() {
     } catch {
       return { ok: false, message: t("pages.inbounds.invalidStreamJson") };
     }
-    const sniffingStr = isTelemt
+    let sniffingStr = isTelemt
       ? JSON.stringify({
           enabled: false,
           destOverride: [],
@@ -986,6 +1087,19 @@ export function InboundsPage() {
           routeOnly: false,
         })
       : buildSniffingFromForm(form.sniffingForm);
+    if (useJsonDraftOnSubmit && !isTelemt) {
+      const sn = roundTripInboundSniffing(jsonDraft.sniffing);
+      if (!sn.ok) {
+        return { ok: false, message: sn.message };
+      }
+      sniffingStr = sn.json;
+    } else if (!isTelemt) {
+      const sn = roundTripInboundSniffing(sniffingStr);
+      if (!sn.ok) {
+        return { ok: false, message: sn.message };
+      }
+      sniffingStr = sn.json;
+    }
     try {
       sniffObj = JSON.parse(sniffingStr);
     } catch {
@@ -998,20 +1112,28 @@ export function InboundsPage() {
       return { ok: false, message: t("pages.inbounds.invalidSniffingJson") };
     }
 
+    const jsonSettingsPatch = useJsonDraftOnSubmit
+      ? serverSettingsJsonToFormPatch(jsonDraft.settings, form.protocol)
+      : {};
+
     const patch = {
       clientEmail: "",
-      vlessFlow: form.vlessFlow,
-      vlessEncryption: form.vlessEncryption,
-      vlessDecryption: form.vlessDecryption,
-      trojanPassword: form.trojanPassword,
-      hysteriaAuth: form.hysteriaAuth,
-      ssMethod: form.ssMethod,
-      ssPassword: form.ssPassword,
-      mixedUser: form.mixedUser,
-      mixedPassword: form.mixedPassword,
+      vlessFlow: effectiveVlessFlow(
+        form.streamForm,
+        jsonSettingsPatch.vlessFlow ?? form.vlessFlow,
+        jsonSettingsPatch.vlessEncryption ?? form.vlessEncryption,
+      ),
+      vlessEncryption: jsonSettingsPatch.vlessEncryption ?? form.vlessEncryption,
+      vlessDecryption: jsonSettingsPatch.vlessDecryption ?? form.vlessDecryption,
+      trojanPassword: jsonSettingsPatch.trojanPassword ?? form.trojanPassword,
+      hysteriaAuth: jsonSettingsPatch.hysteriaAuth ?? form.hysteriaAuth,
+      ssMethod: jsonSettingsPatch.ssMethod ?? form.ssMethod,
+      ssPassword: jsonSettingsPatch.ssPassword ?? form.ssPassword,
+      mixedUser: jsonSettingsPatch.mixedUser ?? form.mixedUser,
+      mixedPassword: jsonSettingsPatch.mixedPassword ?? form.mixedPassword,
       vlessTrojanFallbacks:
         form.protocol === "vless" || form.protocol === "trojan"
-          ? form.vlessTrojanFallbacks
+          ? (jsonSettingsPatch.vlessTrojanFallbacks ?? form.vlessTrojanFallbacks)
           : undefined,
     };
 
@@ -1034,6 +1156,21 @@ export function InboundsPage() {
       settings = buildSettingsJson(form.protocol, patch);
     }
 
+    if (
+      useJsonDraftOnSubmit &&
+      inboundSettingsJsonEditorSupported(form.protocol) &&
+      form.protocol !== "telemt"
+    ) {
+      const merged = mergeInboundServerSettingsJson(settings, jsonDraft.settings, form.protocol);
+      if (!merged.ok) {
+        return { ok: false, message: merged.message };
+      }
+      settings = merged.json;
+      if (editId != null) {
+        settings = mergeFirstClientIntoSettings(settings, form.protocol, patch);
+      }
+    }
+
     const tg = parseFloat(form.totalGb);
     const totalBytes =
       Number.isFinite(tg) && tg > 0 ? Math.round(tg * 1024 * 1024 * 1024) : 0;
@@ -1050,6 +1187,7 @@ export function InboundsPage() {
 
     const body: Record<string, unknown> = {
       remark: joinNameFlag(form.nameFlag, form.remark),
+      tag: tagTrim,
       enable: form.enable,
       listen: form.listen.trim(),
       port: form.port,
@@ -1079,6 +1217,10 @@ export function InboundsPage() {
     form,
     nodeBindings,
     preserveTraffic,
+    jsonDraft,
+    useJsonDraftOnSubmit,
+    inboundModalView,
+    jsonDraftDirty,
     t,
   ]);
 
@@ -1088,7 +1230,7 @@ export function InboundsPage() {
   );
 
   useEffect(() => {
-    if (!modalOpen || inboundModalView !== "json") {
+    if (!modalOpen || inboundModalView !== "preview") {
       return;
     }
     if (!inboundApiPayloadPreview.ok) {
@@ -1477,6 +1619,7 @@ export function InboundsPage() {
         return "desc";
       case "id":
       case "remark":
+      case "tag":
       case "protocol":
       case "port":
       case "status":
@@ -1500,6 +1643,7 @@ export function InboundsPage() {
 
   const filteredInboundRows = useMemo(() => {
     const remarkNeedle = columnFilters.remark.trim().toLowerCase();
+    const tagNeedle = columnFilters.tag.trim().toLowerCase();
     const protocolNeedle = columnFilters.protocol.trim().toLowerCase();
     const portNeedle = columnFilters.port.trim().toLowerCase();
     const trafficRaw = columnFilters.traffic.trim();
@@ -1513,6 +1657,9 @@ export function InboundsPage() {
       if (filterStatus === "disabled" && r.enable) return false;
 
       if (remarkNeedle && !r.remark.toLowerCase().includes(remarkNeedle)) {
+        return false;
+      }
+      if (tagNeedle && !r.tag.toLowerCase().includes(tagNeedle)) {
         return false;
       }
       if (protocolNeedle && !r.protocol.toLowerCase().includes(protocolNeedle)) {
@@ -1553,6 +1700,16 @@ export function InboundsPage() {
   const isHysteriaFamily =
     form.protocol === "hysteria" || form.protocol === "hysteria2";
   const streamTransportMode = getInboundStreamTransportMode(form.protocol);
+  const suggestedInboundTag = useMemo(
+    () =>
+      suggestInboundTag(
+        form.port,
+        form.listen,
+        multiNodeMode === true,
+        editId ?? undefined,
+      ),
+    [form.port, form.listen, multiNodeMode, editId],
+  );
 
   return (
     <PageScaffold compact>
@@ -1638,13 +1795,14 @@ export function InboundsPage() {
           </div>
         ) : (
           <div className="panel-data-table overflow-x-auto">
-            <table className="w-full min-w-[900px] table-fixed border-collapse text-left text-sm">
+            <table className="w-full min-w-[1020px] table-fixed border-collapse text-left text-sm">
               <colgroup>
-                <col className="w-[22%]" />
-                <col className="w-[12%]" />
+                <col className="w-[18%]" />
+                <col className="w-[16%]" />
                 <col className="w-[10%]" />
-                <col className="w-[22%]" />
-                <col className="w-[14%]" />
+                <col className="w-[8%]" />
+                <col className="w-[18%]" />
+                <col className="w-[12%]" />
                 <col className="w-[12%]" />
               </colgroup>
               <thead>
@@ -1652,6 +1810,13 @@ export function InboundsPage() {
                   <InboundSortableTh
                     label={t("remark")}
                     sortKey="remark"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={toggleInboundSort}
+                  />
+                  <InboundSortableTh
+                    label={t("pages.inbounds.tagColumn", { defaultValue: "Tag" })}
+                    sortKey="tag"
                     activeKey={sortKey}
                     dir={sortDir}
                     onSort={toggleInboundSort}
@@ -1699,6 +1864,17 @@ export function InboundsPage() {
                         }
                         placeholder={t("pages.clients.filterColEmail", {
                           defaultValue: "Contains…",
+                        })}
+                      />
+                    </th>
+                    <th className="p-2 align-top font-normal">
+                      <InboundColumnFilterInput
+                        value={columnFilters.tag}
+                        onChange={(v) =>
+                          setColumnFilters((f) => ({ ...f, tag: v }))
+                        }
+                        placeholder={t("pages.inbounds.filterTag", {
+                          defaultValue: "Tag contains…",
                         })}
                       />
                     </th>
@@ -1773,7 +1949,7 @@ export function InboundsPage() {
                 {displayedInboundRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-4 py-10 text-center text-sm text-[var(--fg-muted)]"
                     >
                       {t("pages.inbounds.filterNoResults", {
@@ -1801,6 +1977,12 @@ export function InboundsPage() {
                         title={r.remark || "—"}
                       >
                         {r.remark || "—"}
+                      </td>
+                      <td
+                        className="truncate p-3 font-mono text-xs text-[var(--fg-muted)]"
+                        title={r.tag || "—"}
+                      >
+                        {r.tag || "—"}
                       </td>
                       <td className="truncate p-3" title={r.protocol}>
                         {r.protocol}
@@ -1948,7 +2130,7 @@ export function InboundsPage() {
                     className="inline-flex w-fit shrink-0 rounded-xl border border-[var(--border)] bg-[color-mix(in_oklab,var(--fg)_4%,transparent)] p-0.5"
                     role="group"
                     aria-label={t("pages.inbounds.payloadViewToggle", {
-                      defaultValue: "Form or core config preview",
+                      defaultValue: "Form, JSON editor, or core preview",
                     })}
                   >
                     <button
@@ -1969,14 +2151,28 @@ export function InboundsPage() {
                           ? "bg-[var(--accent)] text-[var(--accent-fg)] shadow-sm"
                           : "text-[var(--fg-muted)] hover:text-[var(--fg)]"
                       }`}
-                      onClick={() => setInboundModalView("json")}
+                      onClick={() => {
+                        syncJsonDraftFromForm();
+                        setInboundModalView("json");
+                      }}
+                    >
+                      {t("pages.inbounds.viewJsonEditor", { defaultValue: "JSON" })}
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                        inboundModalView === "preview"
+                          ? "bg-[var(--accent)] text-[var(--accent-fg)] shadow-sm"
+                          : "text-[var(--fg-muted)] hover:text-[var(--fg)]"
+                      }`}
+                      onClick={() => setInboundModalView("preview")}
                     >
                       {form.protocol === "telemt"
                         ? t("pages.inbounds.viewTelemtTomlPreview", {
-                            defaultValue: "Telemt config",
+                            defaultValue: "Telemt preview",
                           })
                         : t("pages.inbounds.viewXrayCorePreview", {
-                            defaultValue: "Xray config",
+                            defaultValue: "Core preview",
                           })}
                     </button>
                   </div>
@@ -1992,6 +2188,52 @@ export function InboundsPage() {
             </div>
 
             {inboundModalView === "json" ? (
+              <InboundJsonEditor
+                protocol={form.protocol}
+                baselineSettings={baselineSettings}
+                streamJson={jsonDraft.stream}
+                sniffingJson={jsonDraft.sniffing}
+                settingsJson={jsonDraft.settings}
+                onChange={(draft) => {
+                  setJsonDraft(draft);
+                  setJsonDraftDirty(true);
+                }}
+                onApplyToForm={({
+                  streamFormJson,
+                  sniffingFormJson,
+                  settingsServerPatch,
+                  strippedKeys,
+                }) => {
+                  setForm((f) => ({
+                    ...f,
+                    streamForm: parseStreamSettingsToForm(streamFormJson, f.protocol),
+                    sniffingForm: parseSniffingToForm(sniffingFormJson),
+                    vlessFlow: settingsServerPatch.vlessFlow ?? f.vlessFlow,
+                    vlessEncryption: settingsServerPatch.vlessEncryption ?? f.vlessEncryption,
+                    vlessDecryption: settingsServerPatch.vlessDecryption ?? f.vlessDecryption,
+                    trojanPassword: settingsServerPatch.trojanPassword ?? f.trojanPassword,
+                    hysteriaAuth: settingsServerPatch.hysteriaAuth ?? f.hysteriaAuth,
+                    ssMethod: settingsServerPatch.ssMethod ?? f.ssMethod,
+                    ssPassword: settingsServerPatch.ssPassword ?? f.ssPassword,
+                    mixedUser: settingsServerPatch.mixedUser ?? f.mixedUser,
+                    mixedPassword: settingsServerPatch.mixedPassword ?? f.mixedPassword,
+                    vlessTrojanFallbacks:
+                      settingsServerPatch.vlessTrojanFallbacks ?? f.vlessTrojanFallbacks,
+                  }));
+                  setJsonDraftDirty(false);
+                  if (strippedKeys.length > 0) {
+                    toast.info(
+                      t("pages.inbounds.jsonStrippedKeys", {
+                        defaultValue: "Removed unsupported keys: {{keys}}",
+                        keys:
+                          strippedKeys.slice(0, 8).join(", ") +
+                          (strippedKeys.length > 8 ? "…" : ""),
+                      }),
+                    );
+                  }
+                }}
+              />
+            ) : inboundModalView === "preview" ? (
               <div className="space-y-2">
                 <p className="text-xs text-[var(--fg-muted)]">
                   {form.protocol === "telemt"
@@ -2089,6 +2331,27 @@ export function InboundsPage() {
                     autoComplete="off"
                   />
                 </div>
+              </div>
+
+              <div className="mt-3">
+                <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="in-tag">
+                  {t("pages.inbounds.tagLabel", { defaultValue: "Xray tag" })}
+                </label>
+                <Input
+                  id="in-tag"
+                  className="font-mono text-sm"
+                  value={form.tag}
+                  onChange={(e) => setForm((f) => ({ ...f, tag: e.target.value }))}
+                  placeholder={suggestedInboundTag}
+                  autoComplete="off"
+                />
+                <p className="mt-1 text-xs text-[var(--fg-subtle)]">
+                  {t("pages.inbounds.tagHint", {
+                    defaultValue:
+                      "String identifier in Xray config (not only numbers). Leave empty for auto: {{suggest}}. Must be unique.",
+                    suggest: suggestedInboundTag,
+                  })}
+                </p>
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -4521,14 +4784,26 @@ export function InboundsPage() {
                   <SelectNative
                     id="in-flow"
                     value={form.vlessFlow}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, vlessFlow: e.target.value }))
-                    }
+                    disabled={!vlessXtlsFlowAllowed(form.streamForm, form.vlessEncryption)}
+                    onChange={(e) => applyVlessFlowChange(e.target.value)}
                   >
                     <option value="">{t("pages.inbounds.addInboundVlessFlowNone")}</option>
                     <option value="xtls-rprx-vision">xtls-rprx-vision</option>
                     <option value="xtls-rprx-vision-udp443">xtls-rprx-vision-udp443</option>
                   </SelectNative>
+                  {!vlessXtlsFlowAllowed(form.streamForm, form.vlessEncryption) ? (
+                    <p className="mt-1 text-[11px] text-[var(--fg-subtle)]">
+                      {form.streamForm.network === "xhttp"
+                        ? t("pages.inbounds.vlessFlowDisabledXhttp", {
+                            defaultValue:
+                              "XTLS flow is not used with XHTTP. Choose TCP + TLS or REALITY, or clear flow.",
+                          })
+                        : t("pages.inbounds.vlessFlowDisabledTransport", {
+                            defaultValue:
+                              "XTLS flow requires TCP with TLS or REALITY (or VLESS Encryption).",
+                          })}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -4540,10 +4815,15 @@ export function InboundsPage() {
                       value={form.vlessEncryption}
                       placeholder="none"
                       onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          vlessEncryption: e.target.value,
-                        }))
+                        setForm((f) => {
+                          const vlessEncryption = e.target.value;
+                          const vlessFlow = effectiveVlessFlow(
+                            f.streamForm,
+                            f.vlessFlow,
+                            vlessEncryption,
+                          );
+                          return { ...f, vlessEncryption, vlessFlow };
+                        })
                       }
                       disabled={Boolean(form.vlessTrojanFallbacks.length != 0)}
                     />
@@ -5681,8 +5961,9 @@ export function InboundsPage() {
                               />
                             </label>
                           </div>
-                          <div className="mt-2">
+                          <div className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
                             <CheckboxField
+                              align="start"
                               label={t("pages.inbounds.includeInSubscription", {
                                 defaultValue: "Include in subscription",
                               })}
@@ -5714,15 +5995,39 @@ export function InboundsPage() {
                     })}
                   </div>
                 ) : null}
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-[var(--fg-subtle)]">
-                  {t("pages.inbounds.assignNodes", { defaultValue: "Assign nodes" })}
-                </p>
-                <div className="max-h-36 space-y-2 overflow-y-auto rounded-xl border border-[var(--border)] p-2">
+                <CheckboxOptionList
+                  layout="grid"
+                  header={
+                    <SelectionListToolbar
+                      selectedCount={nodeBindings.length}
+                      totalCount={nodes.length}
+                      onSelectAll={() =>
+                        setNodeBindings(
+                          nodes.map((n) => ({
+                            nodeId: n.id,
+                            publishedAddress: "",
+                            publishedPort: "0",
+                            includeInSubscription: true,
+                            subscriptionRemarkSuffix: "",
+                          })),
+                        )
+                      }
+                      onSelectNone={() => setNodeBindings([])}
+                      selectAllLabel={t("pages.inbounds.selectAllNodes", {
+                        defaultValue: "Select all",
+                      })}
+                      selectNoneLabel={t("pages.inbounds.selectNoneNodes", {
+                        defaultValue: "Clear",
+                      })}
+                    />
+                  }
+                >
                   {nodes.map((n) => {
                     const checked = nodeBindings.some((b) => b.nodeId === n.id);
                     return (
-                      <CheckboxField
+                      <CheckboxOptionCard
                         key={n.id}
+                        icon={Server}
                         checked={checked}
                         onChange={(e) => {
                           const on = e.target.checked;
@@ -5743,11 +6048,15 @@ export function InboundsPage() {
                             return rows.filter((r) => r.nodeId !== n.id);
                           });
                         }}
-                        label={`${n.name} (id: ${n.id})`}
+                        heading={n.name}
+                        description={t("pages.inbounds.nodeIdLabel", {
+                          defaultValue: "Node id: {{id}}",
+                          id: n.id,
+                        })}
                       />
                     );
                   })}
-                </div>
+                </CheckboxOptionList>
               </InboundFormSection>
             ) : null}
 

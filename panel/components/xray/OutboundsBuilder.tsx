@@ -9,6 +9,8 @@ import {
   OUTBOUND_STREAM_NETWORK_OPTIONS,
   OUTBOUND_STREAM_SECURITY_OPTIONS,
   OUTBOUND_VLESS_FLOW_OPTIONS,
+  effectiveVlessOutboundFlow,
+  vlessOutboundFlowAllowed,
   moveRow,
   newOutboundRow,
   parseOutboundsSection,
@@ -234,11 +236,21 @@ function OutboundSettingsBody({
       : typeof tls.alpn === "string"
         ? tls.alpn
         : "";
-    const setUserFlow = (nextFlow: string) => {
-      const users = [asRec({ ...u0, flow: nextFlow })];
+    const setUserFlow = (nextFlow: string, streamPatch?: Record<string, unknown>) => {
+      let strNext = { ...str, ...streamPatch };
+      if (nextFlow.trim() !== "" && String(strNext.network ?? "tcp") === "xhttp") {
+        strNext = { ...strNext, network: "tcp" };
+      }
+      const net = String(strNext.network ?? "tcp");
+      const sec = String(strNext.security ?? "none");
+      const flow = effectiveVlessOutboundFlow(net, sec, nextFlow);
+      const users = [asRec({ ...u0, flow })];
       const nvn = { ...vn0, users };
       const vnext = [nvn, ...asArr<Record<string, unknown>>(s.vnext).slice(1)];
-      onRow({ ...v, raw: { ...v.raw, settings: { ...s, vnext } } });
+      onRow({
+        ...v,
+        raw: { ...v.raw, settings: { ...s, vnext }, streamSettings: strNext },
+      });
     };
     return (
       <div className="mt-2 space-y-2">
@@ -293,7 +305,7 @@ function OutboundSettingsBody({
             <SelectNative
               className="mt-1 w-full"
               value={flowVal}
-              disabled={readOnly}
+              disabled={readOnly || !vlessOutboundFlowAllowed(netVal, secVal)}
               onChange={(e) => {
                 setUserFlow(e.target.value);
               }}
@@ -319,7 +331,12 @@ function OutboundSettingsBody({
               value={netVal}
               disabled={readOnly}
               onChange={(e) => {
-                patchStream({ network: e.target.value });
+                const nextNet = e.target.value;
+                if (nextNet === "xhttp" && flowVal.trim() !== "") {
+                  setUserFlow("", { network: nextNet });
+                } else {
+                  patchStream({ network: nextNet });
+                }
               }}
             >
               {!netInPreset ? <option value={netVal}>{netVal}</option> : null}
@@ -339,7 +356,22 @@ function OutboundSettingsBody({
               value={secVal}
               disabled={readOnly}
               onChange={(e) => {
-                applyStreamSecurity(e.target.value);
+                const nextSec = e.target.value;
+                const nextStr: Record<string, unknown> = { ...str, security: nextSec };
+                if (nextSec !== "reality") delete nextStr.realitySettings;
+                if (nextSec !== "tls") delete nextStr.tlsSettings;
+                const flow = effectiveVlessOutboundFlow(netVal, nextSec, flowVal);
+                const users = [asRec({ ...u0, flow })];
+                const nvn = { ...vn0, users };
+                const vnext = [nvn, ...asArr<Record<string, unknown>>(s.vnext).slice(1)];
+                onRow({
+                  ...v,
+                  raw: {
+                    ...v.raw,
+                    settings: { ...s, vnext },
+                    streamSettings: nextStr,
+                  },
+                });
               }}
             >
               {!secInPreset ? <option value={secVal}>{secVal}</option> : null}
