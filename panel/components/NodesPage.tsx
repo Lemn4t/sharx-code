@@ -2,29 +2,17 @@
 
 import {
   Activity,
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle2,
-  Circle,
-  CircleDot,
   Copy,
-  HelpCircle,
   LayoutGrid,
-  List,
+  LayoutList,
   Network,
   Plus,
   Power,
   RefreshCw,
   Table2,
   Trash2,
-  WifiOff,
-  Zap,
-  ZapOff,
-  type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import type { TFunction } from "i18next";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getJson, postJson } from "@/lib/api";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
@@ -42,6 +30,21 @@ import {
 } from "@/lib/nameFlag";
 import { NodeRegisterStep } from "@/components/NodeRegisterStep";
 import { NodeResourceDrawer } from "@/components/NodeResourceDrawer";
+import {
+  NodeListView,
+  NodeTilesView,
+  type NodeViewMode,
+} from "@/components/nodes/NodeListViews";
+import {
+  NodeStatusBadge,
+  TelemtStateBadge,
+  XrayStateBadge,
+} from "@/components/nodes/nodeBadges";
+import {
+  NODES_VIEW_MODE_STORAGE_KEY,
+  readListViewMode,
+  writeListViewMode,
+} from "@/lib/listViewModeStorage";
 import { usePanelWebSocket } from "@/lib/panelWebSocket";
 import { panel } from "@/lib/paths";
 import { PageScaffold, PageHeader, SectionHelpModal, Surface } from "@/components/panel";
@@ -54,8 +57,8 @@ import {
   Input,
   Modal,
   Reveal,
-  Segmented,
   SelectNative,
+  Segmented,
   Spinner,
   Switch,
   useToast,
@@ -118,169 +121,6 @@ type ClientNodeMatrixPayload = {
 const NODE_DOCKER_IMAGE = "registry.konstpic.ru/sharx/sharxnode:latest";
 const REGISTER_HANDSHAKE_PREVIEW_MS = 3500;
 
-// ---------------------------------------------------------------------------
-// TileWithTooltip — IconTile that shows a portaled tooltip on hover/focus
-// ---------------------------------------------------------------------------
-
-import type { IconTileTone } from "@/components/ui/icon-tile";
-
-type TileWithTooltipProps = {
-  icon: LucideIcon;
-  tone: IconTileTone;
-  label: string;
-};
-
-function TileWithTooltip({ icon, tone, label }: TileWithTooltipProps) {
-  const tipId = useId();
-  const ref = useRef<HTMLSpanElement | null>(null);
-  const [open, setOpen] = useState(false);
-  const [xy, setXy] = useState({ x: 0, y: 0 });
-
-  const updatePos = useCallback(() => {
-    if (!ref.current) return;
-    const r = ref.current.getBoundingClientRect();
-    setXy({ x: r.left + r.width / 2, y: r.bottom + 6 });
-  }, []);
-
-  const show = useCallback(() => { updatePos(); setOpen(true); }, [updatePos]);
-  const hide = useCallback(() => setOpen(false), []);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = () => hide();
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [open, hide]);
-
-  return (
-    <>
-      <span
-        ref={ref}
-        aria-describedby={open ? tipId : undefined}
-        aria-label={label}
-        onMouseEnter={show}
-        onMouseLeave={hide}
-        onFocus={show}
-        onBlur={hide}
-        tabIndex={0}
-        className="cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-xl"
-      >
-        <IconTile icon={icon} tone={tone} size="sm" />
-      </span>
-      {open && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              id={tipId}
-              role="tooltip"
-              className="pointer-events-none fixed z-[10000] w-max max-w-[min(16rem,calc(100vw-1rem))] rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-[11px] font-medium leading-snug text-[var(--fg)] shadow-lg"
-              style={{ left: xy.x, top: xy.y, transform: "translateX(-50%)" }}
-            >
-              {label}
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Status badges — IconTile + label, matching page section icon style
-// ---------------------------------------------------------------------------
-
-type NodeStatusBadgeProps = { status: string; t: TFunction };
-
-function NodeStatusBadge({ status, t }: NodeStatusBadgeProps) {
-  const s = (status || "unknown").toLowerCase();
-
-  const configs = {
-    online: {
-      icon: CheckCircle2,
-      tone: "success" as const,
-      label: t("pages.nodes.online"),
-    },
-    offline: {
-      icon: WifiOff,
-      tone: "danger" as const,
-      label: t("pages.nodes.offline"),
-    },
-    error: {
-      icon: AlertCircle,
-      tone: "danger" as const,
-      label: t("pages.nodes.error"),
-    },
-    unknown: {
-      icon: HelpCircle,
-      tone: "neutral" as const,
-      label: t("pages.nodes.unknown"),
-    },
-  } as const;
-
-  const cfg = configs[s as keyof typeof configs] ?? configs.unknown;
-
-  return <TileWithTooltip icon={cfg.icon} tone={cfg.tone} label={cfg.label} />;
-}
-
-type XrayStateBadgeProps = { state: string | undefined; t: TFunction };
-
-function XrayStateBadge({ state, t }: XrayStateBadgeProps) {
-  const s = (state || "unknown").toLowerCase();
-
-  const configs = {
-    running: {
-      icon: Zap,
-      tone: "success" as const,
-      label: t("pages.nodes.xrayStateRunning"),
-    },
-    stopped: {
-      icon: ZapOff,
-      tone: "warning" as const,
-      label: t("pages.nodes.xrayStateStopped"),
-    },
-    error: {
-      icon: AlertTriangle,
-      tone: "danger" as const,
-      label: t("pages.nodes.xrayStateError"),
-    },
-    unknown: {
-      icon: Activity,
-      tone: "neutral" as const,
-      label: t("pages.nodes.xrayStateUnknown"),
-    },
-  } as const;
-
-  const cfg = configs[s as keyof typeof configs] ?? configs.unknown;
-
-  return <TileWithTooltip icon={cfg.icon} tone={cfg.tone} label={cfg.label} />;
-}
-
-function TelemtStateBadge({ state, t }: { state: string | undefined; t: TFunction }) {
-  const s = (state || "unknown").toLowerCase();
-  const configs = {
-    running: {
-      icon: CircleDot,
-      tone: "success" as const,
-      label: t("pages.nodes.telemtStateRunning"),
-    },
-    stopped: {
-      icon: Circle,
-      tone: "warning" as const,
-      label: t("pages.nodes.telemtStateStopped"),
-    },
-    unknown: {
-      icon: HelpCircle,
-      tone: "neutral" as const,
-      label: t("pages.nodes.telemtStateUnknown"),
-    },
-  } as const;
-  const cfg = configs[s as keyof typeof configs] ?? configs.unknown;
-  return <TileWithTooltip icon={cfg.icon} tone={cfg.tone} label={cfg.label} />;
-}
-
 type PendingRegistration = {
   nodeId: number;
   secretKey?: string;
@@ -338,376 +178,6 @@ volumes:
 `;
 }
 
-// ---------------------------------------------------------------------------
-// List View Component
-// ---------------------------------------------------------------------------
-
-type NodesListViewProps = {
-  rows: NodeRow[];
-  onlineUsersByNode: Record<number, number>;
-  t: TFunction;
-  onEdit: (row: NodeRow) => void;
-  onDelete: (row: NodeRow) => void;
-  onToggleEnable: (row: NodeRow, enabled: boolean) => void;
-  onStopXray: (row: NodeRow) => void;
-  onStopTelemt: (row: NodeRow) => void;
-  onViewMetrics: (row: NodeRow) => void;
-  togglingEnableId: number | null;
-  xrayStoppingId: number | null;
-  xrayRestartingId: number | null;
-  telemtStoppingId: number | null;
-  telemtRestartingId: number | null;
-};
-
-function NodesListView({
-  rows,
-  onlineUsersByNode,
-  t,
-  onEdit,
-  onDelete,
-  onToggleEnable,
-  onStopXray,
-  onStopTelemt,
-  onViewMetrics,
-  togglingEnableId,
-  xrayStoppingId,
-  xrayRestartingId,
-  telemtStoppingId,
-  telemtRestartingId,
-}: NodesListViewProps) {
-  const authModeLabel = (m?: string) => {
-    const k = (m ?? "legacy").toLowerCase();
-    if (k === "pairing" || k === LEGACY_NODE_AUTH_PAIRING)
-      return t("pages.nodes.authPairing");
-    return t("pages.nodes.authLegacy");
-  };
-
-  return (
-    <div className="space-y-2 px-3 pb-3">
-      {rows.map((r) => (
-        <div
-          key={r.id}
-          className={`rounded-xl border border-[var(--border)] p-4 transition-colors ${
-            r.enable === false ? "opacity-60" : ""
-          } cursor-pointer hover:bg-[color-mix(in_oklab,var(--accent)_5%,transparent)]`}
-          onClick={() => onEdit(r)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onEdit(r);
-            }
-          }}
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Switch
-                size="sm"
-                checked={r.enable !== false}
-                disabled={togglingEnableId === r.id}
-                ariaLabel={t("pages.nodes.nodeEnabled")}
-                onChange={(next) => {
-                  onToggleEnable(r, next);
-                }}
-                onClick={(e) => e.stopPropagation()}
-              />
-              <div>
-                <div className="font-semibold text-[var(--fg)]">{r.name}</div>
-                <div className="font-mono text-xs text-[var(--fg-muted)]">{r.address}</div>
-              </div>
-            </div>
-            <NodeStatusBadge status={r.status} t={t} />
-          </div>
-
-          <div className="mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 md:grid-cols-4">
-            <div>
-              <div className="text-[var(--fg-subtle)]">{t("pages.nodes.authMode")}</div>
-              <div className="text-[var(--fg)]">{authModeLabel(r.authMode)}</div>
-            </div>
-            <div>
-              <div className="text-[var(--fg-subtle)]">{t("pages.nodes.onlineUsers")}</div>
-              <div className="font-mono text-[var(--fg)]">{onlineUsersByNode[r.id] ?? 0}</div>
-            </div>
-            <div>
-              <div className="text-[var(--fg-subtle)]">{t("pages.nodes.responseTime")}</div>
-              <div className="font-mono text-[var(--fg)]">
-                {r.responseTime != null && r.responseTime > 0 ? `${r.responseTime} ms` : "—"}
-              </div>
-            </div>
-            <div>
-              <div className="text-[var(--fg-subtle)]">{t("pages.nodes.xrayVersion")}</div>
-              <div className="font-mono text-[var(--fg)]">{r.xrayVersion || "—"}</div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1">
-              <XrayStateBadge state={r.xrayState} t={t} />
-              {r.enable ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
-                    loading={xrayStoppingId === r.id}
-                    disabled={
-                      (r.xrayState || "").toLowerCase() !== "running" ||
-                      xrayStoppingId === r.id ||
-                      xrayRestartingId === r.id
-                    }
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStopXray(r);
-                    }}
-                  >
-                    <Power size={16} />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="!p-1.5 text-[var(--fg-muted)] hover:text-sky-300 disabled:opacity-40"
-                    loading={xrayRestartingId === r.id}
-                    disabled={xrayRestartingId === r.id || xrayStoppingId === r.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRestartXray(r);
-                    }}
-                  >
-                    <RefreshCw size={16} />
-                  </Button>
-                </>
-              ) : null}
-            </div>
-
-            <div className="flex items-center gap-1">
-              <TelemtStateBadge state={r.telemtState} t={t} />
-              {r.enable ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
-                    loading={telemtStoppingId === r.id}
-                    disabled={
-                      (r.telemtState || "").toLowerCase() !== "running" ||
-                      telemtStoppingId === r.id ||
-                      telemtRestartingId === r.id
-                    }
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStopTelemt(r);
-                    }}
-                  >
-                    <Power size={16} />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="!p-1.5 text-[var(--fg-muted)] hover:text-sky-300 disabled:opacity-40"
-                    loading={telemtRestartingId === r.id}
-                    disabled={telemtRestartingId === r.id || telemtStoppingId === r.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRestartTelemt(r);
-                    }}
-                  >
-                    <RefreshCw size={16} />
-                  </Button>
-                </>
-              ) : null}
-            </div>
-
-            <div className="ml-auto flex items-center gap-0.5">
-              <Button
-                type="button"
-                variant="ghost"
-                className="!p-1.5 text-[var(--fg-muted)] hover:text-[var(--accent)]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewMetrics(r);
-                }}
-              >
-                <Activity size={16} />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="!p-1.5 text-[var(--fg-muted)] hover:text-[var(--danger)]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(r);
-                }}
-              >
-                <Trash2 size={16} />
-              </Button>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Card View Component
-// ---------------------------------------------------------------------------
-
-type NodesCardViewProps = Omit<NodesListViewProps, "rows"> & {
-  rows: NodeRow[];
-};
-
-function NodesCardView({
-  rows,
-  onlineUsersByNode,
-  t,
-  onEdit,
-  onDelete,
-  onToggleEnable,
-  onStopXray,
-  onStopTelemt,
-  onViewMetrics,
-  togglingEnableId,
-  xrayStoppingId,
-  xrayRestartingId,
-  telemtStoppingId,
-  telemtRestartingId,
-}: NodesCardViewProps) {
-  const authModeLabel = (m?: string) => {
-    const k = (m ?? "legacy").toLowerCase();
-    if (k === "pairing" || k === LEGACY_NODE_AUTH_PAIRING)
-      return t("pages.nodes.authPairing");
-    return t("pages.nodes.authLegacy");
-  };
-
-  return (
-    <div className="grid gap-3 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-3">
-      {rows.map((r) => (
-        <div
-          key={r.id}
-          className={`rounded-xl border border-[var(--border)] p-4 transition-colors ${
-            r.enable === false ? "opacity-60" : ""
-          } cursor-pointer hover:border-[var(--accent)] hover:bg-[color-mix(in_oklab,var(--accent)_5%,transparent)]`}
-          onClick={() => onEdit(r)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onEdit(r);
-            }
-          }}
-        >
-          <div className="mb-3 flex items-start justify-between">
-            <div className="flex-1">
-              <div className="mb-1 font-semibold text-[var(--fg)]">{r.name}</div>
-              <div className="mb-2 font-mono text-xs text-[var(--fg-muted)]">{r.address}</div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  size="sm"
-                  checked={r.enable !== false}
-                  disabled={togglingEnableId === r.id}
-                  ariaLabel={t("pages.nodes.nodeEnabled")}
-                  onChange={(next) => {
-                    onToggleEnable(r, next);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <NodeStatusBadge status={r.status} t={t} />
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-3 space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-[var(--fg-subtle)]">{t("pages.nodes.authMode")}</span>
-              <span className="text-[var(--fg)]">{authModeLabel(r.authMode)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[var(--fg-subtle)]">{t("pages.nodes.onlineUsers")}</span>
-              <span className="font-mono text-[var(--fg)]">{onlineUsersByNode[r.id] ?? 0}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[var(--fg-subtle)]">{t("pages.nodes.responseTime")}</span>
-              <span className="font-mono text-[var(--fg)]">
-                {r.responseTime != null && r.responseTime > 0 ? `${r.responseTime} ms` : "—"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[var(--fg-subtle)]">{t("pages.nodes.xrayVersion")}</span>
-              <span className="font-mono text-[var(--fg)]">{r.xrayVersion || "—"}</span>
-            </div>
-          </div>
-
-          <div className="mb-3 flex items-center gap-2">
-            <div className="flex items-center gap-1">
-              <XrayStateBadge state={r.xrayState} t={t} />
-              {r.enable && (r.xrayState || "").toLowerCase() === "running" ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
-                  loading={xrayStoppingId === r.id}
-                  disabled={xrayStoppingId === r.id || xrayRestartingId === r.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onStopXray(r);
-                  }}
-                >
-                  <Power size={14} />
-                </Button>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-1">
-              <TelemtStateBadge state={r.telemtState} t={t} />
-              {r.enable && (r.telemtState || "").toLowerCase() === "running" ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
-                  loading={telemtStoppingId === r.id}
-                  disabled={telemtStoppingId === r.id || telemtRestartingId === r.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onStopTelemt(r);
-                  }}
-                >
-                  <Power size={14} />
-                </Button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="flex gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              className="!p-1.5 flex-1 text-[var(--fg-muted)] hover:text-[var(--accent)]"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewMetrics(r);
-              }}
-            >
-              <Activity size={16} />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="!p-1.5 flex-1 text-[var(--fg-muted)] hover:text-[var(--danger)]"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(r);
-              }}
-            >
-              <Trash2 size={16} />
-            </Button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function NodesPage() {
   const { t } = useTranslation();
   const toast = useToast();
@@ -721,7 +191,16 @@ export function NodesPage() {
   const [nameFilter, setNameFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [xrayStateFilter, setXrayStateFilter] = useState("all");
-  const [viewMode, setViewMode] = useState<"table" | "list" | "card">("table");
+  const [viewMode, setViewModeState] = useState<NodeViewMode>("table");
+
+  useEffect(() => {
+    setViewModeState(readListViewMode(NODES_VIEW_MODE_STORAGE_KEY));
+  }, []);
+
+  const setViewMode = useCallback((mode: NodeViewMode) => {
+    setViewModeState(mode);
+    writeListViewMode(NODES_VIEW_MODE_STORAGE_KEY, mode);
+  }, []);
 
   const [addOpen, setAddOpen] = useState(false);
   const [addWizardStep, setAddWizardStep] = useState<1 | 2 | 3>(1);
@@ -1543,6 +1022,42 @@ export function NodesPage() {
     });
   }, [rows, nameFilter, statusFilter, xrayStateFilter]);
 
+  const listViewCtx = useMemo(
+    () => ({
+      t,
+      authModeLabel,
+      onlineUsersByNode,
+      onOpenEdit: (r: NodeRow) => void openEdit(r),
+      onPatchEnable: patchNodeEnable,
+      togglingEnableId,
+      onStopXray: (r: NodeRow) => void stopXrayOnRow(r),
+      onRestartXray: (r: NodeRow) => void restartXrayOnRow(r),
+      xrayStoppingId,
+      xrayRestartingId,
+      onStopTelemt: (r: NodeRow) => void stopTelemtOnRow(r),
+      onRestartTelemt: (r: NodeRow) => void restartTelemtOnRow(r),
+      telemtStoppingId,
+      telemtRestartingId,
+      onMetrics: (r: NodeRow) => setMetricsNode({ id: r.id, name: r.name }),
+      onDelete: (r: NodeRow) => setDeleteTarget(r),
+    }),
+    [
+      t,
+      authModeLabel,
+      onlineUsersByNode,
+      patchNodeEnable,
+      togglingEnableId,
+      stopXrayOnRow,
+      restartXrayOnRow,
+      xrayStoppingId,
+      xrayRestartingId,
+      stopTelemtOnRow,
+      restartTelemtOnRow,
+      telemtStoppingId,
+      telemtRestartingId,
+    ],
+  );
+
   return (
     <PageScaffold compact>
       <PageHeader
@@ -1588,7 +1103,8 @@ export function NodesPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="grid gap-2 px-3 pt-3 sm:grid-cols-[1fr,11rem,11rem]">
+            <div className="flex flex-col gap-2 px-3 pt-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="grid flex-1 gap-2 sm:grid-cols-[1fr,11rem,11rem]">
               <Input
                 value={nameFilter}
                 onChange={(e) => setNameFilter(e.target.value)}
@@ -1626,59 +1142,71 @@ export function NodesPage() {
                   {t("pages.nodes.xrayStateUnknown")}
                 </option>
               </SelectNative>
-            </div>
-            <div className="flex justify-end px-3">
-              <Segmented
+              </div>
+              <Segmented<NodeViewMode>
                 value={viewMode}
-                onChange={(v) => setViewMode(v as "table" | "list" | "card")}
+                onChange={setViewMode}
+                size="sm"
+                layoutId="nodes-view-mode"
                 items={[
-                  { id: "table", label: "Table", icon: Table2 },
-                  { id: "list", label: "List", icon: List },
-                  { id: "card", label: "Card", icon: LayoutGrid },
+                  {
+                    id: "table",
+                    label: t("pages.nodes.viewModeTable", { defaultValue: "Table" }),
+                    icon: Table2,
+                  },
+                  {
+                    id: "list",
+                    label: t("pages.nodes.viewModeList", { defaultValue: "List" }),
+                    icon: LayoutList,
+                  },
+                  {
+                    id: "tiles",
+                    label: t("pages.nodes.viewModeTiles", { defaultValue: "Tiles" }),
+                    icon: LayoutGrid,
+                  },
                 ]}
               />
             </div>
-          <div className="overflow-hidden">
-            {viewMode === "table" && (
-              <div className="panel-data-table overflow-x-auto">
-                <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border)] text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-subtle)]">
-                      <th
-                        className="w-14 p-3"
-                        scope="col"
-                        aria-label={t("pages.nodes.nodeEnabled")}
-                      />
-                      <th className="p-3">{t("pages.nodes.name")}</th>
-                      <th className="p-3">{t("pages.nodes.address")}</th>
-                      <th className="p-3">{t("pages.nodes.authMode")}</th>
-                      <th className="p-3">{t("pages.nodes.status")}</th>
-                      <th className="p-3">
-                        {t("pages.nodes.onlineUsers")}
-                      </th>
-                      <th className="p-3">{t("pages.nodes.responseTime")}</th>
-                      <th className="p-3">{t("pages.nodes.workerVersion")}</th>
-                      <th className="p-3">{t("pages.nodes.xrayVersion")}</th>
-                      <th className="p-3">{t("pages.nodes.xrayState")}</th>
-                      <th className="p-3">{t("pages.nodes.telemtVersion")}</th>
-                      <th className="p-3">
-                        {t("pages.nodes.telemtState")}
-                      </th>
-                      <th className="p-3">{t("pages.nodes.assignedInbounds")}</th>
-                      <th className="p-3 w-28">{t("pages.nodes.operate")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedAndFilteredRows.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={14}
-                          className="p-6 text-center text-sm text-[var(--fg-subtle)]"
-                        >
-                          {t("pages.nodes.noMatches")}
-                        </td>
-                      </tr>
-                    ) : sortedAndFilteredRows.map((r) => (
+          {viewMode === "table" ? (
+          <div className="panel-data-table overflow-x-auto">
+            <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-subtle)]">
+                  <th
+                    className="w-14 p-3"
+                    scope="col"
+                    aria-label={t("pages.nodes.nodeEnabled")}
+                  />
+                  <th className="p-3">{t("pages.nodes.name")}</th>
+                  <th className="p-3">{t("pages.nodes.address")}</th>
+                  <th className="p-3">{t("pages.nodes.authMode")}</th>
+                  <th className="p-3">{t("pages.nodes.status")}</th>
+                  <th className="p-3">
+                    {t("pages.nodes.onlineUsers")}
+                  </th>
+                  <th className="p-3">{t("pages.nodes.responseTime")}</th>
+                  <th className="p-3">{t("pages.nodes.workerVersion")}</th>
+                  <th className="p-3">{t("pages.nodes.xrayVersion")}</th>
+                  <th className="p-3">{t("pages.nodes.xrayState")}</th>
+                  <th className="p-3">{t("pages.nodes.telemtVersion")}</th>
+                  <th className="p-3">
+                    {t("pages.nodes.telemtState")}
+                  </th>
+                  <th className="p-3">{t("pages.nodes.assignedInbounds")}</th>
+                  <th className="p-3 w-28">{t("pages.nodes.operate")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedAndFilteredRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={14}
+                      className="p-6 text-center text-sm text-[var(--fg-subtle)]"
+                    >
+                      {t("pages.nodes.noMatches")}
+                    </td>
+                  </tr>
+                ) : sortedAndFilteredRows.map((r) => (
                   <tr
                     key={r.id}
                     role="button"
@@ -1886,46 +1414,20 @@ export function NodesPage() {
                 ))}
               </tbody>
             </table>
-              </div>
-            )}
-            {viewMode === "list" && (
-              <NodesListView
-                rows={sortedAndFilteredRows}
-                onlineUsersByNode={onlineUsersByNode}
-                t={t}
-                onEdit={openEdit}
-                onDelete={setDeleteTarget}
-                onToggleEnable={patchNodeEnable}
-                onStopXray={stopXrayOnRow}
-                onStopTelemt={stopTelemtOnRow}
-                onViewMetrics={(row) => setMetricsNode({ id: row.id, name: row.name })}
-                togglingEnableId={togglingEnableId}
-                xrayStoppingId={xrayStoppingId}
-                xrayRestartingId={xrayRestartingId}
-                telemtStoppingId={telemtStoppingId}
-                telemtRestartingId={telemtRestartingId}
-              />
-            )}
-            {viewMode === "card" && (
-              <NodesCardView
-                rows={sortedAndFilteredRows}
-                onlineUsersByNode={onlineUsersByNode}
-                t={t}
-                onEdit={openEdit}
-                onDelete={setDeleteTarget}
-                onToggleEnable={patchNodeEnable}
-                onStopXray={stopXrayOnRow}
-                onStopTelemt={stopTelemtOnRow}
-                onViewMetrics={(row) => setMetricsNode({ id: row.id, name: row.name })}
-                togglingEnableId={togglingEnableId}
-                xrayStoppingId={xrayStoppingId}
-                xrayRestartingId={xrayRestartingId}
-                telemtStoppingId={telemtStoppingId}
-                telemtRestartingId={telemtRestartingId}
-              />
-            )}
           </div>
-          
+          ) : viewMode === "list" ? (
+            <NodeListView
+              rows={sortedAndFilteredRows}
+              ctx={listViewCtx}
+              emptyLabel={t("pages.nodes.noMatches")}
+            />
+          ) : (
+            <NodeTilesView
+              rows={sortedAndFilteredRows}
+              ctx={listViewCtx}
+              emptyLabel={t("pages.nodes.noMatches")}
+            />
+          )}
           </div>
         )}
       </Surface>

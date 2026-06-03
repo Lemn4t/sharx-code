@@ -644,6 +644,9 @@ selectNoneNodes = "Clear"
 nodeIdLabel = "Node id: {{id}}"
 xrayCoreEditorHint = "Edit the inbound as merged into the Xray core config (listen, port, tag, settings, streamSettings, sniffing). You may change clients[] in settings; unsupported keys are removed on Apply or Save. Node bindings are not edited here."
 xrayCoreReloadPreview = "Reload from form"
+viewModeTable = "Table"
+viewModeList = "List"
+viewModeTiles = "Tiles"
 
   [pages.inbounds.periodicTrafficReset]
   never = "なし"
@@ -1750,6 +1753,9 @@ xrayRestartSuccess = "Xray restarted on node"
 xrayRestartError = "Failed to restart Xray on node"
 telemtRestartSuccess = "Telemt restarted on node"
 telemtRestartError = "Failed to restart Telemt on node"
+viewModeTable = "Table"
+viewModeList = "List"
+viewModeTiles = "Tiles"
 
   [pages.nodes.geography]
   title = "Node geography"
