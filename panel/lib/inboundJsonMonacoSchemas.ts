@@ -122,3 +122,74 @@ export function inboundJsonMonacoPath(activeDoc: "stream" | "sniffing" | "settin
   if (activeDoc === "sniffing") return "inbound-sniffing.json";
   return "inbound-settings.json";
 }
+
+function coreSettingsSchema(protocol: InboundFormProtocol, t: TFunction): object {
+  const server = serverSettingsSchema(protocol, t);
+  const base: Record<string, unknown> = {
+    type: "object",
+    description: D(
+      t,
+      "pages.inbounds.jsonSchema.core.settings",
+      "Inbound settings as in Xray. You may edit clients[] / peers[] / accounts[]; unknown server fields are removed on Apply or Save.",
+    ),
+  };
+  if (server && typeof server === "object") {
+    const srv = server as { properties?: Record<string, unknown> };
+    base.properties = {
+      ...srv.properties,
+      clients: {
+        type: "array",
+        description: "Xray clients (email, id, flow, …)",
+      },
+      peers: { type: "array", description: "WireGuard peers" },
+      accounts: { type: "array", description: "Mixed inbound accounts" },
+      auth: { type: "string" },
+      udp: { type: "boolean" },
+    };
+    base.additionalProperties = true;
+  } else if (protocol === "mixed") {
+    base.properties = {
+      auth: { type: "string" },
+      udp: { type: "boolean" },
+      accounts: { type: "array" },
+    };
+    base.additionalProperties = true;
+  } else {
+    base.additionalProperties = true;
+  }
+  return base;
+}
+
+/** Monaco schemas for the full Xray inbound object (core preview editor). */
+export function inboundCoreConfigMonacoSchemas(
+  t: TFunction,
+  protocol: InboundFormProtocol,
+): MonacoJsonSchemaEntry[] {
+  const stream =
+    protocol !== "wireguard" && protocol !== "telemt"
+      ? buildXrayStreamSettingsSchema((k, o) => t(k, o ?? {}))
+      : { type: "object" };
+  return [
+    {
+      uri: "inbound://core-config",
+      fileMatch: ["inbound-xray-core.json"],
+      schema: {
+        type: "object",
+        required: ["listen", "port", "protocol", "tag", "settings", "streamSettings", "sniffing"],
+        properties: {
+          listen: {
+            description: "Bind address (string or JSON string)",
+          },
+          port: { type: "integer", minimum: 1, maximum: 65535 },
+          protocol: { type: "string" },
+          tag: { type: "string" },
+          settings: coreSettingsSchema(protocol, t),
+          streamSettings: stream,
+          sniffing: sniffingSchema(t),
+          acceptProxyProtocol: { type: "boolean" },
+        },
+        additionalProperties: false,
+      },
+    },
+  ];
+}

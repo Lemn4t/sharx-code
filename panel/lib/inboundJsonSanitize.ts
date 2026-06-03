@@ -226,3 +226,249 @@ export function serverSettingsJsonToFormPatch(
     return {};
   }
 }
+
+const WIREGUARD_PANEL_SETTINGS_KEYS = [
+  "mtu",
+  "secretKey",
+  "address",
+  "clientDns",
+  "noKernelTun",
+  "workers",
+] as const;
+
+function parseListenFromCore(raw: unknown): string {
+  if (typeof raw === "string") {
+    return raw.trim();
+  }
+  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === "string") {
+    return raw[0].trim();
+  }
+  if (typeof raw === "string" && raw.startsWith('"')) {
+    try {
+      const v = JSON.parse(raw);
+      if (typeof v === "string") {
+        return v.trim();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return "";
+}
+
+function coreProtocolMatchesForm(
+  coreProtocol: string,
+  formProtocol: InboundFormProtocol,
+): boolean {
+  const p = coreProtocol.trim().toLowerCase();
+  if (formProtocol === "hysteria2") {
+    return p === "hysteria" || p === "hysteria2";
+  }
+  return p === formProtocol;
+}
+
+function rawJsonField(value: unknown, label: string): InboundJsonRoundTripResult & { text?: string } {
+  if (value === undefined || value === null) {
+    return { ok: false, message: `${label}: missing` };
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return { ok: false, message: `${label}: empty` };
+    }
+    return { ok: true, json: trimmed, strippedKeys: [], text: trimmed };
+  }
+  if (typeof value === "object") {
+    try {
+      const text = JSON.stringify(value);
+      return { ok: true, json: text, strippedKeys: [], text };
+    } catch {
+      return { ok: false, message: `${label}: cannot serialize` };
+    }
+  }
+  return { ok: false, message: `${label}: must be a JSON object or string` };
+}
+
+function injectAcceptProxyIntoStream(streamJson: string, acceptProxy: boolean): string {
+  if (!acceptProxy) {
+    return streamJson;
+  }
+  try {
+    const o = JSON.parse(streamJson) as Record<string, unknown>;
+    o.acceptProxyProtocol = true;
+    return JSON.stringify(o);
+  } catch {
+    return streamJson;
+  }
+}
+
+/** Merge server fields with validation; keep clients/peers/accounts from the edited core settings. */
+export function mergeInboundSettingsPreservingEditedClients(
+  baselineSettings: string,
+  editedSettingsStr: string,
+  protocol: InboundFormProtocol,
+): InboundJsonRoundTripResult {
+  const parsed = parseJsonObject(editedSettingsStr, "settings");
+  if (!parsed.ok || !parsed.value) {
+    return parsed;
+  }
+  const edited = parsed.value;
+  const serverOnly = extractInboundServerSettingsJson(editedSettingsStr, protocol);
+  const merged = mergeInboundServerSettingsJson(baselineSettings, serverOnly, protocol);
+  if (!merged.ok) {
+    return merged;
+  }
+  let baseline: Record<string, unknown> = {};
+  try {
+    baseline = JSON.parse(baselineSettings || "{}") as Record<string, unknown>;
+  } catch {
+    baseline = {};
+  }
+  const final: Record<string, unknown> = JSON.parse(merged.json) as Record<string, unknown>;
+
+  if (Array.isArray(edited.clients)) {
+    final.clients = edited.clients;
+  } else if (Array.isArray(baseline.clients)) {
+    final.clients = baseline.clients;
+  }
+  if (Array.isArray(edited.peers)) {
+    final.peers = edited.peers;
+  } else if (Array.isArray(baseline.peers)) {
+    final.peers = baseline.peers;
+  }
+  if (protocol === "mixed") {
+    if (typeof edited.auth === "string") {
+      final.auth = edited.auth;
+    }
+    if (typeof edited.udp === "boolean") {
+      final.udp = edited.udp;
+    }
+    if (Array.isArray(edited.accounts)) {
+      final.accounts = edited.accounts;
+    }
+  }
+  if (protocol === "shadowsocks" && !Array.isArray(final.clients)) {
+    final.clients = [];
+  }
+  if (protocol === "wireguard") {
+    for (const key of WIREGUARD_PANEL_SETTINGS_KEYS) {
+      if (key in edited) {
+        final[key] = edited[key];
+      } else if (key in baseline) {
+        final[key] = baseline[key];
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    json: JSON.stringify(final),
+    strippedKeys: merged.strippedKeys,
+  };
+}
+
+export type InboundCoreConfigApplyPatch = {
+  listen: string;
+  port: number;
+  tag: string;
+  streamSettingsStr: string;
+  sniffingStr: string;
+  settingsStr: string;
+  formPatch: ReturnType<typeof serverSettingsJsonToFormPatch>;
+  strippedKeys: string[];
+};
+
+/** Validate and sanitize a full Xray inbound object from the core preview editor. */
+export function roundTripInboundCoreConfig(
+  json: string,
+  formProtocol: InboundFormProtocol,
+  baselineSettings: string,
+): { ok: true; patch: InboundCoreConfigApplyPatch } | { ok: false; message: string } {
+  const rootParsed = parseJsonObject(json, "inbound");
+  if (!rootParsed.ok || !rootParsed.value) {
+    return { ok: false, message: rootParsed.ok ? "inbound: invalid" : rootParsed.message };
+  }
+  const root = rootParsed.value;
+  const stripped: string[] = [];
+
+  const protoRaw = root.protocol;
+  if (typeof protoRaw !== "string" || !coreProtocolMatchesForm(protoRaw, formProtocol)) {
+    return {
+      ok: false,
+      message: `protocol must match the form (${formProtocol})`,
+    };
+  }
+
+  const portRaw = root.port;
+  const port =
+    typeof portRaw === "number"
+      ? portRaw
+      : typeof portRaw === "string"
+        ? parseInt(portRaw, 10)
+        : NaN;
+  if (!Number.isFinite(port) || port < 1 || port > 65535) {
+    return { ok: false, message: "port: must be 1–65535" };
+  }
+
+  const tag = typeof root.tag === "string" ? root.tag.trim() : "";
+  if (!tag) {
+    return { ok: false, message: "tag: required" };
+  }
+
+  const streamField = rawJsonField(root.streamSettings, "streamSettings");
+  if (!streamField.ok || !streamField.text) {
+    return { ok: false, message: streamField.ok ? "streamSettings: invalid" : streamField.message };
+  }
+  let streamText = streamField.text;
+  if (root.acceptProxyProtocol === true) {
+    streamText = injectAcceptProxyIntoStream(streamText, true);
+  }
+  const streamRt = roundTripInboundStreamSettings(streamText, formProtocol);
+  if (!streamRt.ok) {
+    return { ok: false, message: streamRt.message };
+  }
+  stripped.push(...streamRt.strippedKeys);
+
+  const sniffField = rawJsonField(root.sniffing, "sniffing");
+  if (!sniffField.ok || !sniffField.text) {
+    return { ok: false, message: sniffField.ok ? "sniffing: invalid" : sniffField.message };
+  }
+  const sniffRt = roundTripInboundSniffing(sniffField.text);
+  if (!sniffRt.ok) {
+    return { ok: false, message: sniffRt.message };
+  }
+  stripped.push(...sniffRt.strippedKeys);
+
+  const settingsField = rawJsonField(root.settings, "settings");
+  if (!settingsField.ok || !settingsField.text) {
+    return { ok: false, message: settingsField.ok ? "settings: invalid" : settingsField.message };
+  }
+  const settingsRt = mergeInboundSettingsPreservingEditedClients(
+    baselineSettings,
+    settingsField.text,
+    formProtocol,
+  );
+  if (!settingsRt.ok) {
+    return { ok: false, message: settingsRt.message };
+  }
+  stripped.push(...settingsRt.strippedKeys);
+
+  const formPatch = serverSettingsJsonToFormPatch(
+    extractInboundServerSettingsJson(settingsRt.json, formProtocol),
+    formProtocol,
+  );
+
+  return {
+    ok: true,
+    patch: {
+      listen: parseListenFromCore(root.listen),
+      port,
+      tag,
+      streamSettingsStr: streamRt.json,
+      sniffingStr: sniffRt.json,
+      settingsStr: settingsRt.json,
+      formPatch,
+      strippedKeys: stripped,
+    },
+  };
+}

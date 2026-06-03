@@ -71,18 +71,12 @@ import { usePanelWebSocket } from "@/lib/panelWebSocket";
 import { panel } from "@/lib/paths";
 import { suggestInboundTag, validateInboundTagInput } from "@/lib/inboundTag";
 import { CompareModeFilterField, type CompareOp } from "@/components/CompareModeFilterField";
-import {
-  buildInboundJsonDraftFromForm,
-  InboundJsonEditor,
-  type InboundJsonDraft,
-} from "@/components/inbounds/InboundJsonEditor";
+import { InboundXrayCoreEditor } from "@/components/inbounds/InboundXrayCoreEditor";
 import { InboundTlsCertPinBlock } from "@/components/inbounds/InboundTlsCertPinBlock";
 import {
-  inboundSettingsJsonEditorSupported,
-  mergeInboundServerSettingsJson,
+  roundTripInboundCoreConfig,
   roundTripInboundSniffing,
   roundTripInboundStreamSettings,
-  serverSettingsJsonToFormPatch,
 } from "@/lib/inboundJsonSanitize";
 import { PageScaffold, PageHeader, SectionHelpModal, Surface } from "@/components/panel";
 import {
@@ -588,15 +582,9 @@ export function InboundsPage() {
   const [toggleEnableBusyId, setToggleEnableBusyId] = useState<number | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [inboundModalView, setInboundModalView] = useState<"form" | "json" | "preview">(
-    "form",
-  );
-  const [jsonDraft, setJsonDraft] = useState<InboundJsonDraft>({
-    stream: "{}",
-    sniffing: defaultSniffingString(),
-    settings: "{}",
-  });
-  const [jsonDraftDirty, setJsonDraftDirty] = useState(false);
+  const [inboundModalView, setInboundModalView] = useState<"form" | "preview">("form");
+  const [coreConfigDraft, setCoreConfigDraft] = useState("");
+  const [coreConfigDraftDirty, setCoreConfigDraftDirty] = useState(false);
   const [xrayPreviewText, setXrayPreviewText] = useState<string | null>(null);
   const [xrayPreviewLoading, setXrayPreviewLoading] = useState(false);
   const [xrayPreviewError, setXrayPreviewError] = useState<string | null>(null);
@@ -707,12 +695,9 @@ export function InboundsPage() {
     setStep("basics");
     setPreserveTraffic({ up: 0, down: 0, allTime: 0 });
     setInboundModalView("form");
-    setJsonDraftDirty(false);
-    setJsonDraft({
-      stream: defaultStreamSettingsString(),
-      sniffing: defaultSniffingString(),
-      settings: "{}",
-    });
+    setCoreConfigDraftDirty(false);
+    setCoreConfigDraft("");
+    setXrayPreviewText(null);
   }, []);
 
   const openAdd = () => {
@@ -1029,20 +1014,8 @@ export function InboundsPage() {
     }));
   };
 
-  const syncJsonDraftFromForm = useCallback(() => {
-    setJsonDraft(
-      buildInboundJsonDraftFromForm({
-        protocol: form.protocol,
-        streamForm: form.streamForm,
-        sniffingForm: form.sniffingForm,
-        baselineSettings,
-      }),
-    );
-    setJsonDraftDirty(false);
-  }, [baselineSettings, form.protocol, form.sniffingForm, form.streamForm]);
-
-  const useJsonDraftOnSubmit =
-    inboundModalView === "json" || jsonDraftDirty;
+  const useCoreConfigDraftOnSubmit =
+    inboundModalView === "preview" && coreConfigDraftDirty;
 
   const buildInboundSubmitBody = useCallback(():
     | { ok: true; body: Record<string, unknown> }
@@ -1059,12 +1032,40 @@ export function InboundsPage() {
     let streamSettingsStr = isTelemt
       ? "{}"
       : buildStreamSettingsFromForm(form.streamForm, form.protocol);
-    if (useJsonDraftOnSubmit && !isTelemt) {
-      const rt = roundTripInboundStreamSettings(jsonDraft.stream, form.protocol);
-      if (!rt.ok) {
-        return { ok: false, message: rt.message };
+    let sniffingStr = isTelemt
+      ? JSON.stringify({
+          enabled: false,
+          destOverride: [],
+          metadataOnly: false,
+          routeOnly: false,
+        })
+      : buildSniffingFromForm(form.sniffingForm);
+    let settingsFromCore: string | null = null;
+    let coreListen: string | undefined;
+    let corePort: number | undefined;
+    let coreTag: string | undefined;
+    let coreFormPatch: Partial<ReturnType<typeof parseFirstClientFromSettings>> = {};
+
+    if (useCoreConfigDraftOnSubmit && !isTelemt && coreConfigDraft.trim()) {
+      const coreRt = roundTripInboundCoreConfig(
+        coreConfigDraft,
+        form.protocol,
+        baselineSettings,
+      );
+      if (!coreRt.ok) {
+        return { ok: false, message: coreRt.message };
       }
-      streamSettingsStr = rt.json;
+      streamSettingsStr = coreRt.patch.streamSettingsStr;
+      sniffingStr = coreRt.patch.sniffingStr;
+      settingsFromCore = coreRt.patch.settingsStr;
+      coreListen = coreRt.patch.listen;
+      corePort = coreRt.patch.port;
+      coreTag = coreRt.patch.tag;
+      coreFormPatch = coreRt.patch.formPatch;
+      const coreTagValidation = validateInboundTagInput(coreTag);
+      if (coreTagValidation) {
+        return { ok: false, message: coreTagValidation };
+      }
     } else if (!isTelemt) {
       const rt = roundTripInboundStreamSettings(streamSettingsStr, form.protocol);
       if (!rt.ok) {
@@ -1079,21 +1080,7 @@ export function InboundsPage() {
     } catch {
       return { ok: false, message: t("pages.inbounds.invalidStreamJson") };
     }
-    let sniffingStr = isTelemt
-      ? JSON.stringify({
-          enabled: false,
-          destOverride: [],
-          metadataOnly: false,
-          routeOnly: false,
-        })
-      : buildSniffingFromForm(form.sniffingForm);
-    if (useJsonDraftOnSubmit && !isTelemt) {
-      const sn = roundTripInboundSniffing(jsonDraft.sniffing);
-      if (!sn.ok) {
-        return { ok: false, message: sn.message };
-      }
-      sniffingStr = sn.json;
-    } else if (!isTelemt) {
+    if (!useCoreConfigDraftOnSubmit && !isTelemt) {
       const sn = roundTripInboundSniffing(sniffingStr);
       if (!sn.ok) {
         return { ok: false, message: sn.message };
@@ -1112,33 +1099,31 @@ export function InboundsPage() {
       return { ok: false, message: t("pages.inbounds.invalidSniffingJson") };
     }
 
-    const jsonSettingsPatch = useJsonDraftOnSubmit
-      ? serverSettingsJsonToFormPatch(jsonDraft.settings, form.protocol)
-      : {};
-
     const patch = {
       clientEmail: "",
       vlessFlow: effectiveVlessFlow(
         form.streamForm,
-        jsonSettingsPatch.vlessFlow ?? form.vlessFlow,
-        jsonSettingsPatch.vlessEncryption ?? form.vlessEncryption,
+        coreFormPatch.vlessFlow ?? form.vlessFlow,
+        coreFormPatch.vlessEncryption ?? form.vlessEncryption,
       ),
-      vlessEncryption: jsonSettingsPatch.vlessEncryption ?? form.vlessEncryption,
-      vlessDecryption: jsonSettingsPatch.vlessDecryption ?? form.vlessDecryption,
-      trojanPassword: jsonSettingsPatch.trojanPassword ?? form.trojanPassword,
-      hysteriaAuth: jsonSettingsPatch.hysteriaAuth ?? form.hysteriaAuth,
-      ssMethod: jsonSettingsPatch.ssMethod ?? form.ssMethod,
-      ssPassword: jsonSettingsPatch.ssPassword ?? form.ssPassword,
-      mixedUser: jsonSettingsPatch.mixedUser ?? form.mixedUser,
-      mixedPassword: jsonSettingsPatch.mixedPassword ?? form.mixedPassword,
+      vlessEncryption: coreFormPatch.vlessEncryption ?? form.vlessEncryption,
+      vlessDecryption: coreFormPatch.vlessDecryption ?? form.vlessDecryption,
+      trojanPassword: coreFormPatch.trojanPassword ?? form.trojanPassword,
+      hysteriaAuth: coreFormPatch.hysteriaAuth ?? form.hysteriaAuth,
+      ssMethod: coreFormPatch.ssMethod ?? form.ssMethod,
+      ssPassword: coreFormPatch.ssPassword ?? form.ssPassword,
+      mixedUser: coreFormPatch.mixedUser ?? form.mixedUser,
+      mixedPassword: coreFormPatch.mixedPassword ?? form.mixedPassword,
       vlessTrojanFallbacks:
         form.protocol === "vless" || form.protocol === "trojan"
-          ? (jsonSettingsPatch.vlessTrojanFallbacks ?? form.vlessTrojanFallbacks)
+          ? (coreFormPatch.vlessTrojanFallbacks ?? form.vlessTrojanFallbacks)
           : undefined,
     };
 
     let settings: string;
-    if (form.protocol === "wireguard") {
+    if (settingsFromCore != null) {
+      settings = settingsFromCore;
+    } else if (form.protocol === "wireguard") {
       settings = "{}";
     } else if (form.protocol === "telemt") {
       settings = buildTelemtSettingsJson(form.telemtForm);
@@ -1154,21 +1139,6 @@ export function InboundsPage() {
       settings = mergeFirstClientIntoSettings(baselineSettings, form.protocol, patch);
     } else {
       settings = buildSettingsJson(form.protocol, patch);
-    }
-
-    if (
-      useJsonDraftOnSubmit &&
-      inboundSettingsJsonEditorSupported(form.protocol) &&
-      form.protocol !== "telemt"
-    ) {
-      const merged = mergeInboundServerSettingsJson(settings, jsonDraft.settings, form.protocol);
-      if (!merged.ok) {
-        return { ok: false, message: merged.message };
-      }
-      settings = merged.json;
-      if (editId != null) {
-        settings = mergeFirstClientIntoSettings(settings, form.protocol, patch);
-      }
     }
 
     const tg = parseFloat(form.totalGb);
@@ -1187,10 +1157,10 @@ export function InboundsPage() {
 
     const body: Record<string, unknown> = {
       remark: joinNameFlag(form.nameFlag, form.remark),
-      tag: tagTrim,
+      tag: coreTag ?? tagTrim,
       enable: form.enable,
-      listen: form.listen.trim(),
-      port: form.port,
+      listen: coreListen ?? form.listen.trim(),
+      port: corePort ?? form.port,
       protocol: form.protocol,
       settings,
       streamSettings: streamSettingsStr,
@@ -1217,10 +1187,10 @@ export function InboundsPage() {
     form,
     nodeBindings,
     preserveTraffic,
-    jsonDraft,
-    useJsonDraftOnSubmit,
+    coreConfigDraft,
+    useCoreConfigDraftOnSubmit,
     inboundModalView,
-    jsonDraftDirty,
+    coreConfigDraftDirty,
     t,
   ]);
 
@@ -1273,8 +1243,12 @@ export function InboundsPage() {
               fail(t("fail", { defaultValue: "Error" }));
             }
           } else {
-            setXrayPreviewText(JSON.stringify(r.obj, null, 2));
+            const text = JSON.stringify(r.obj, null, 2);
+            setXrayPreviewText(text);
             setXrayPreviewError(null);
+            if (!coreConfigDraftDirty) {
+              setCoreConfigDraft(text);
+            }
           }
         } else {
           fail((r as { msg?: string }).msg || t("fail", { defaultValue: "Error" }));
@@ -1295,7 +1269,14 @@ export function InboundsPage() {
     editId,
     t,
     form.protocol,
+    coreConfigDraftDirty,
   ]);
+
+  const reloadCoreConfigFromForm = useCallback(() => {
+    setCoreConfigDraftDirty(false);
+    setCoreConfigDraft("");
+    setXrayPreviewText(null);
+  }, []);
 
   const submitModal = async () => {
     const built = buildInboundSubmitBody();
@@ -2130,7 +2111,7 @@ export function InboundsPage() {
                     className="inline-flex w-fit shrink-0 rounded-xl border border-[var(--border)] bg-[color-mix(in_oklab,var(--fg)_4%,transparent)] p-0.5"
                     role="group"
                     aria-label={t("pages.inbounds.payloadViewToggle", {
-                      defaultValue: "Form, JSON editor, or core preview",
+                      defaultValue: "Form or Xray config",
                     })}
                   >
                     <button
@@ -2147,32 +2128,21 @@ export function InboundsPage() {
                     <button
                       type="button"
                       className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                        inboundModalView === "json"
-                          ? "bg-[var(--accent)] text-[var(--accent-fg)] shadow-sm"
-                          : "text-[var(--fg-muted)] hover:text-[var(--fg)]"
-                      }`}
-                      onClick={() => {
-                        syncJsonDraftFromForm();
-                        setInboundModalView("json");
-                      }}
-                    >
-                      {t("pages.inbounds.viewJsonEditor", { defaultValue: "JSON" })}
-                    </button>
-                    <button
-                      type="button"
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                         inboundModalView === "preview"
                           ? "bg-[var(--accent)] text-[var(--accent-fg)] shadow-sm"
                           : "text-[var(--fg-muted)] hover:text-[var(--fg)]"
                       }`}
-                      onClick={() => setInboundModalView("preview")}
+                      onClick={() => {
+                        setCoreConfigDraftDirty(false);
+                        setInboundModalView("preview");
+                      }}
                     >
                       {form.protocol === "telemt"
                         ? t("pages.inbounds.viewTelemtTomlPreview", {
                             defaultValue: "Telemt preview",
                           })
                         : t("pages.inbounds.viewXrayCorePreview", {
-                            defaultValue: "Core preview",
+                            defaultValue: "Xray config",
                           })}
                     </button>
                   </div>
@@ -2187,85 +2157,95 @@ export function InboundsPage() {
               </div>
             </div>
 
-            {inboundModalView === "json" ? (
-              <InboundJsonEditor
-                protocol={form.protocol}
-                baselineSettings={baselineSettings}
-                streamJson={jsonDraft.stream}
-                sniffingJson={jsonDraft.sniffing}
-                settingsJson={jsonDraft.settings}
-                onChange={(draft) => {
-                  setJsonDraft(draft);
-                  setJsonDraftDirty(true);
-                }}
-                onApplyToForm={({
-                  streamFormJson,
-                  sniffingFormJson,
-                  settingsServerPatch,
-                  strippedKeys,
-                }) => {
-                  setForm((f) => ({
-                    ...f,
-                    streamForm: parseStreamSettingsToForm(streamFormJson, f.protocol),
-                    sniffingForm: parseSniffingToForm(sniffingFormJson),
-                    vlessFlow: settingsServerPatch.vlessFlow ?? f.vlessFlow,
-                    vlessEncryption: settingsServerPatch.vlessEncryption ?? f.vlessEncryption,
-                    vlessDecryption: settingsServerPatch.vlessDecryption ?? f.vlessDecryption,
-                    trojanPassword: settingsServerPatch.trojanPassword ?? f.trojanPassword,
-                    hysteriaAuth: settingsServerPatch.hysteriaAuth ?? f.hysteriaAuth,
-                    ssMethod: settingsServerPatch.ssMethod ?? f.ssMethod,
-                    ssPassword: settingsServerPatch.ssPassword ?? f.ssPassword,
-                    mixedUser: settingsServerPatch.mixedUser ?? f.mixedUser,
-                    mixedPassword: settingsServerPatch.mixedPassword ?? f.mixedPassword,
-                    vlessTrojanFallbacks:
-                      settingsServerPatch.vlessTrojanFallbacks ?? f.vlessTrojanFallbacks,
-                  }));
-                  setJsonDraftDirty(false);
-                  if (strippedKeys.length > 0) {
-                    toast.info(
-                      t("pages.inbounds.jsonStrippedKeys", {
-                        defaultValue: "Removed unsupported keys: {{keys}}",
-                        keys:
-                          strippedKeys.slice(0, 8).join(", ") +
-                          (strippedKeys.length > 8 ? "…" : ""),
-                      }),
-                    );
-                  }
-                }}
-              />
-            ) : inboundModalView === "preview" ? (
-              <div className="space-y-2">
-                <p className="text-xs text-[var(--fg-muted)]">
-                  {form.protocol === "telemt"
-                    ? t("pages.inbounds.telemtTomlPreviewHint", {
-                        defaultValue:
-                          "Generated Telemt config.toml (same as deployed to the node or local data/telemt on standalone). [access.users] is empty until you save the inbound and assign clients; after that it reflects the database.",
-                      })
-                    : t("pages.inbounds.xrayCorePreviewHint", {
-                        defaultValue:
-                          "Single inbound object as it is merged into the Xray core config (listen, port, tag, protocol, settings, streamSettings, sniffing). Panel API request format is not shown here.",
-                      })}
-                </p>
-                <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-                  {!inboundApiPayloadPreview.ok ? (
-                    <p className="text-sm text-amber-600 dark:text-amber-400">
-                      {inboundApiPayloadPreview.message}
-                    </p>
-                  ) : xrayPreviewLoading ? (
-                    <div className="grid min-h-32 place-items-center">
-                      <Spinner size={28} />
-                    </div>
-                  ) : xrayPreviewError != null ? (
-                    <p className="text-sm text-amber-600 dark:text-amber-400">
-                      {xrayPreviewError}
-                    </p>
-                  ) : xrayPreviewText != null ? (
-                    <pre className="max-h-[min(60dvh,28rem)] overflow-auto text-xs font-mono leading-relaxed text-[var(--fg)] [overflow-wrap:anywhere] whitespace-pre-wrap">
-                      {xrayPreviewText}
-                    </pre>
-                  ) : null}
+            {inboundModalView === "preview" ? (
+              form.protocol === "telemt" ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-[var(--fg-muted)]">
+                    {t("pages.inbounds.telemtTomlPreviewHint", {
+                      defaultValue:
+                        "Generated Telemt config.toml (same as deployed to the node or local data/telemt on standalone). [access.users] is empty until you save the inbound and assign clients; after that it reflects the database.",
+                    })}
+                  </p>
+                  <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+                    {!inboundApiPayloadPreview.ok ? (
+                      <p className="text-sm text-amber-600 dark:text-amber-400">
+                        {inboundApiPayloadPreview.message}
+                      </p>
+                    ) : xrayPreviewLoading ? (
+                      <div className="grid min-h-32 place-items-center">
+                        <Spinner size={28} />
+                      </div>
+                    ) : xrayPreviewError != null ? (
+                      <p className="text-sm text-amber-600 dark:text-amber-400">
+                        {xrayPreviewError}
+                      </p>
+                    ) : xrayPreviewText != null ? (
+                      <pre className="max-h-[min(60dvh,28rem)] overflow-auto text-xs font-mono leading-relaxed text-[var(--fg)] [overflow-wrap:anywhere] whitespace-pre-wrap">
+                        {xrayPreviewText}
+                      </pre>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+              ) : !inboundApiPayloadPreview.ok ? (
+                <p className="text-sm text-amber-600 dark:text-amber-400">
+                  {inboundApiPayloadPreview.message}
+                </p>
+              ) : (
+                <InboundXrayCoreEditor
+                  protocol={form.protocol}
+                  baselineSettings={baselineSettings}
+                  value={coreConfigDraft}
+                  loading={xrayPreviewLoading}
+                  error={xrayPreviewError}
+                  onChange={(text) => {
+                    setCoreConfigDraft(text);
+                    setCoreConfigDraftDirty(true);
+                  }}
+                  onReloadFromServer={reloadCoreConfigFromForm}
+                  onApplyToForm={({
+                    listen,
+                    port,
+                    tag,
+                    streamFormJson,
+                    sniffingFormJson,
+                    settingsStr,
+                    formPatch,
+                    strippedKeys,
+                  }) => {
+                    setForm((f) => ({
+                      ...f,
+                      listen,
+                      port,
+                      tag,
+                      streamForm: parseStreamSettingsToForm(streamFormJson, f.protocol),
+                      sniffingForm: parseSniffingToForm(sniffingFormJson),
+                      vlessFlow: formPatch.vlessFlow ?? f.vlessFlow,
+                      vlessEncryption: formPatch.vlessEncryption ?? f.vlessEncryption,
+                      vlessDecryption: formPatch.vlessDecryption ?? f.vlessDecryption,
+                      trojanPassword: formPatch.trojanPassword ?? f.trojanPassword,
+                      hysteriaAuth: formPatch.hysteriaAuth ?? f.hysteriaAuth,
+                      ssMethod: formPatch.ssMethod ?? f.ssMethod,
+                      ssPassword: formPatch.ssPassword ?? f.ssPassword,
+                      mixedUser: formPatch.mixedUser ?? f.mixedUser,
+                      mixedPassword: formPatch.mixedPassword ?? f.mixedPassword,
+                      vlessTrojanFallbacks:
+                        formPatch.vlessTrojanFallbacks ?? f.vlessTrojanFallbacks,
+                    }));
+                    setBaselineSettings(settingsStr);
+                    setCoreConfigDraftDirty(false);
+                    if (strippedKeys.length > 0) {
+                      toast.info(
+                        t("pages.inbounds.jsonStrippedKeys", {
+                          defaultValue: "Removed unsupported keys: {{keys}}",
+                          keys:
+                            strippedKeys.slice(0, 8).join(", ") +
+                            (strippedKeys.length > 8 ? "…" : ""),
+                        }),
+                      );
+                    }
+                  }}
+                />
+              )
             ) : (
               <>
             {isEdit ? (
