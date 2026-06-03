@@ -9,10 +9,13 @@ import {
   Eye,
   Filter,
   KeyRound,
+  LayoutGrid,
+  List,
   Network,
   Plus,
   Server,
   SlidersHorizontal,
+  Table2,
   Trash2,
   User,
   type LucideIcon,
@@ -91,6 +94,7 @@ import {
   Input,
   Modal,
   Reveal,
+  Segmented,
   SelectNative,
   Spinner,
   Stepper,
@@ -572,6 +576,213 @@ const defaultForm = () => ({
   vlessTrojanFallbacks: [] as VlessTrojanFallbackFormRow[],
 });
 
+// ---------------------------------------------------------------------------
+// Inbounds List View Component
+// ---------------------------------------------------------------------------
+
+type InboundsListViewProps = {
+  rows: Row[];
+  t: TFunction;
+  onEdit: (row: Row) => void;
+  onDelete: (row: Row) => void;
+  onToggleEnable: (row: Row, enabled: boolean) => void;
+  toggleEnableBusyId: number | null;
+};
+
+function InboundsListView({
+  rows,
+  t,
+  onEdit,
+  onDelete,
+  onToggleEnable,
+  toggleEnableBusyId,
+}: InboundsListViewProps) {
+  return (
+    <div className="space-y-2 px-3 pb-3">
+      {rows.map((r) => (
+        <div
+          key={r.id}
+          className={`rounded-xl border border-[var(--border)] p-4 transition-colors ${
+            !r.enable ? "opacity-60" : ""
+          } cursor-pointer hover:bg-[color-mix(in_oklab,var(--accent)_5%,transparent)]`}
+          onClick={() => onEdit(r)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onEdit(r);
+            }
+          }}
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Switch
+                size="sm"
+                checked={r.enable}
+                disabled={toggleEnableBusyId === r.id}
+                ariaLabel={t("enable")}
+                onChange={(next) => {
+                  onToggleEnable(r, next);
+                }}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div>
+                <div className="font-semibold text-[var(--fg)]">{r.remark}</div>
+                <div className="text-xs text-[var(--fg-muted)]">{r.tag}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div>
+              <div className="text-[var(--fg-subtle)]">{t("protocol")}</div>
+              <div className="text-[var(--fg)]">{r.protocol}</div>
+            </div>
+            <div>
+              <div className="text-[var(--fg-subtle)]">{t("host")}</div>
+              <div className="font-mono text-[var(--fg)]">{r.port}</div>
+            </div>
+            <div>
+              <div className="text-[var(--fg-subtle)]">{t("status")}</div>
+              <div className="text-[var(--fg)]">{r.enable ? t("enable") : t("disable")}</div>
+            </div>
+            <div>
+              <div className="text-[var(--fg-subtle)]">{t("pages.inbounds.totalDownUp", { defaultValue: "Up / Down" })}</div>
+              <div className="font-mono text-[var(--fg)]">{sizeFormat(r.up)} / {sizeFormat(r.down)}</div>
+            </div>
+          </div>
+
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              className="flex-1 !p-1.5 text-[var(--fg-muted)] hover:text-[var(--accent)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(r);
+              }}
+            >
+              <Eye size={16} />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="flex-1 !p-1.5 text-[var(--fg-muted)] hover:text-[var(--danger)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(r);
+              }}
+            >
+              <Trash2 size={16} />
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inbounds Card View Component
+// ---------------------------------------------------------------------------
+
+type InboundsCardViewProps = Omit<InboundsListViewProps, "rows"> & {
+  rows: Row[];
+};
+
+function InboundsCardView({
+  rows,
+  t,
+  onEdit,
+  onDelete,
+  onToggleEnable,
+  toggleEnableBusyId,
+}: InboundsCardViewProps) {
+  return (
+    <div className="grid gap-3 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-3">
+      {rows.map((r) => (
+        <div
+          key={r.id}
+          className={`rounded-xl border border-[var(--border)] p-4 transition-colors ${
+            !r.enable ? "opacity-60" : ""
+          } cursor-pointer hover:border-[var(--accent)] hover:bg-[color-mix(in_oklab,var(--accent)_5%,transparent)]`}
+          onClick={() => onEdit(r)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onEdit(r);
+            }
+          }}
+        >
+          <div className="mb-3 flex items-start justify-between">
+            <div className="flex-1">
+              <div className="mb-1 font-semibold text-[var(--fg)]">{r.remark}</div>
+              <div className="mb-2 text-xs text-[var(--fg-muted)]">{r.tag}</div>
+              <Switch
+                size="sm"
+                checked={r.enable}
+                disabled={toggleEnableBusyId === r.id}
+                ariaLabel={t("enable")}
+                onChange={(next) => {
+                  onToggleEnable(r, next);
+                }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+
+          <div className="mb-3 space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-[var(--fg-subtle)]">{t("protocol")}</span>
+              <span className="text-[var(--fg)]">{r.protocol}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--fg-subtle)]">{t("host")}</span>
+              <span className="font-mono text-[var(--fg)]">{r.port}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--fg-subtle)]">{t("status")}</span>
+              <span className="text-[var(--fg)]">{r.enable ? t("enable") : t("disable")}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--fg-subtle)]">{t("pages.inbounds.totalDownUp", { defaultValue: "Up / Down" })}</span>
+              <span className="font-mono text-[var(--fg)]">{sizeFormat(r.up)} / {sizeFormat(r.down)}</span>
+            </div>
+          </div>
+
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              className="flex-1 !p-1.5 text-[var(--fg-muted)] hover:text-[var(--accent)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(r);
+              }}
+            >
+              <Eye size={16} />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="flex-1 !p-1.5 text-[var(--fg-muted)] hover:text-[var(--danger)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(r);
+              }}
+            >
+              <Trash2 size={16} />
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function InboundsPage() {
   const { t } = useTranslation();
   const toast = useToast();
@@ -613,6 +824,7 @@ export function InboundsPage() {
   >(() => ({ ...INBOUND_DEFAULT_FILTERS }));
   const [trafficCompareOp, setTrafficCompareOp] = useState<CompareOp>("");
   const [filterStatus, setFilterStatus] = useState<InboundFilterStatus>("");
+  const [viewMode, setViewMode] = useState<"table" | "list" | "card">("table");
 
   const ws = usePanelWebSocket();
   const resyncAfterDisconnect = useRef(false);
@@ -1762,6 +1974,17 @@ export function InboundsPage() {
           ) : null}
         </div>
       ) : null}
+      <div className="flex justify-end px-3 pb-3">
+        <Segmented
+          value={viewMode}
+          onChange={(v) => setViewMode(v as "table" | "list" | "card")}
+          items={[
+            { id: "table", label: "Table", icon: Table2 },
+            { id: "list", label: "List", icon: List },
+            { id: "card", label: "Card", icon: LayoutGrid },
+          ]}
+        />
+      </div>
       <Surface padding="none" className="overflow-visible">
         {loading && !rows.length ? (
           <div className="grid min-h-48 place-items-center">
@@ -1775,7 +1998,9 @@ export function InboundsPage() {
             </div>
           </div>
         ) : (
-          <div className="panel-data-table overflow-x-auto">
+          <div className="overflow-hidden">
+            {viewMode === "table" && (
+              <div className="panel-data-table overflow-x-auto">
             <table className="w-full min-w-[1020px] table-fixed border-collapse text-left text-sm">
               <colgroup>
                 <col className="w-[18%]" />
@@ -2004,6 +2229,28 @@ export function InboundsPage() {
                 )}
               </tbody>
             </table>
+              </div>
+            )}
+            {viewMode === "list" && (
+              <InboundsListView
+                rows={filteredRows}
+                t={t}
+                onEdit={handleEdit}
+                onDelete={confirmDelete}
+                onToggleEnable={handleToggleEnable}
+                toggleEnableBusyId={toggleEnableBusyId}
+              />
+            )}
+            {viewMode === "card" && (
+              <InboundsCardView
+                rows={filteredRows}
+                t={t}
+                onEdit={handleEdit}
+                onDelete={confirmDelete}
+                onToggleEnable={handleToggleEnable}
+                toggleEnableBusyId={toggleEnableBusyId}
+              />
+            )}
           </div>
         )}
       </Surface>

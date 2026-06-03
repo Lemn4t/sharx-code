@@ -9,10 +9,13 @@ import {
   CircleDot,
   Copy,
   HelpCircle,
+  LayoutGrid,
+  List,
   Network,
   Plus,
   Power,
   RefreshCw,
+  Table2,
   Trash2,
   WifiOff,
   Zap,
@@ -51,6 +54,7 @@ import {
   Input,
   Modal,
   Reveal,
+  Segmented,
   SelectNative,
   Spinner,
   Switch,
@@ -334,6 +338,382 @@ volumes:
 `;
 }
 
+// ---------------------------------------------------------------------------
+// List View Component
+// ---------------------------------------------------------------------------
+
+type NodesListViewProps = {
+  rows: NodeRow[];
+  onlineUsersByNode: Record<number, number>;
+  t: TFunction;
+  onEdit: (row: NodeRow) => void;
+  onDelete: (row: NodeRow) => void;
+  onToggleEnable: (row: NodeRow, enabled: boolean) => void;
+  onStopXray: (row: NodeRow) => void;
+  onRestartXray: (row: NodeRow) => void;
+  onStopTelemt: (row: NodeRow) => void;
+  onRestartTelemt: (row: NodeRow) => void;
+  onViewMetrics: (row: NodeRow) => void;
+  togglingEnableId: number | null;
+  xrayStoppingId: number | null;
+  xrayRestartingId: number | null;
+  telemtStoppingId: number | null;
+  telemtRestartingId: number | null;
+};
+
+function NodesListView({
+  rows,
+  onlineUsersByNode,
+  t,
+  onEdit,
+  onDelete,
+  onToggleEnable,
+  onStopXray,
+  onRestartXray,
+  onStopTelemt,
+  onRestartTelemt,
+  onViewMetrics,
+  togglingEnableId,
+  xrayStoppingId,
+  xrayRestartingId,
+  telemtStoppingId,
+  telemtRestartingId,
+}: NodesListViewProps) {
+  const authModeLabel = (m?: string) => {
+    const k = (m ?? "legacy").toLowerCase();
+    if (k === "pairing" || k === LEGACY_NODE_AUTH_PAIRING)
+      return t("pages.nodes.authPairing");
+    return t("pages.nodes.authLegacy");
+  };
+
+  return (
+    <div className="space-y-2 px-3 pb-3">
+      {rows.map((r) => (
+        <div
+          key={r.id}
+          className={`rounded-xl border border-[var(--border)] p-4 transition-colors ${
+            r.enable === false ? "opacity-60" : ""
+          } cursor-pointer hover:bg-[color-mix(in_oklab,var(--accent)_5%,transparent)]`}
+          onClick={() => onEdit(r)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onEdit(r);
+            }
+          }}
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Switch
+                size="sm"
+                checked={r.enable !== false}
+                disabled={togglingEnableId === r.id}
+                ariaLabel={t("pages.nodes.nodeEnabled")}
+                onChange={(next) => {
+                  onToggleEnable(r, next);
+                }}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div>
+                <div className="font-semibold text-[var(--fg)]">{r.name}</div>
+                <div className="font-mono text-xs text-[var(--fg-muted)]">{r.address}</div>
+              </div>
+            </div>
+            <NodeStatusBadge status={r.status} t={t} />
+          </div>
+
+          <div className="mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 md:grid-cols-4">
+            <div>
+              <div className="text-[var(--fg-subtle)]">{t("pages.nodes.authMode")}</div>
+              <div className="text-[var(--fg)]">{authModeLabel(r.authMode)}</div>
+            </div>
+            <div>
+              <div className="text-[var(--fg-subtle)]">{t("pages.nodes.onlineUsers")}</div>
+              <div className="font-mono text-[var(--fg)]">{onlineUsersByNode[r.id] ?? 0}</div>
+            </div>
+            <div>
+              <div className="text-[var(--fg-subtle)]">{t("pages.nodes.responseTime")}</div>
+              <div className="font-mono text-[var(--fg)]">
+                {r.responseTime != null && r.responseTime > 0 ? `${r.responseTime} ms` : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[var(--fg-subtle)]">{t("pages.nodes.xrayVersion")}</div>
+              <div className="font-mono text-[var(--fg)]">{r.xrayVersion || "—"}</div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1">
+              <XrayStateBadge state={r.xrayState} t={t} />
+              {r.enable ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
+                    loading={xrayStoppingId === r.id}
+                    disabled={
+                      (r.xrayState || "").toLowerCase() !== "running" ||
+                      xrayStoppingId === r.id ||
+                      xrayRestartingId === r.id
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStopXray(r);
+                    }}
+                  >
+                    <Power size={16} />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="!p-1.5 text-[var(--fg-muted)] hover:text-sky-300 disabled:opacity-40"
+                    loading={xrayRestartingId === r.id}
+                    disabled={xrayRestartingId === r.id || xrayStoppingId === r.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRestartXray(r);
+                    }}
+                  >
+                    <RefreshCw size={16} />
+                  </Button>
+                </>
+              ) : null}
+            </div>
+
+            <div className="flex items-center gap-1">
+              <TelemtStateBadge state={r.telemtState} t={t} />
+              {r.enable ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
+                    loading={telemtStoppingId === r.id}
+                    disabled={
+                      (r.telemtState || "").toLowerCase() !== "running" ||
+                      telemtStoppingId === r.id ||
+                      telemtRestartingId === r.id
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStopTelemt(r);
+                    }}
+                  >
+                    <Power size={16} />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="!p-1.5 text-[var(--fg-muted)] hover:text-sky-300 disabled:opacity-40"
+                    loading={telemtRestartingId === r.id}
+                    disabled={telemtRestartingId === r.id || telemtStoppingId === r.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRestartTelemt(r);
+                    }}
+                  >
+                    <RefreshCw size={16} />
+                  </Button>
+                </>
+              ) : null}
+            </div>
+
+            <div className="ml-auto flex items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                className="!p-1.5 text-[var(--fg-muted)] hover:text-[var(--accent)]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewMetrics(r);
+                }}
+              >
+                <Activity size={16} />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="!p-1.5 text-[var(--fg-muted)] hover:text-[var(--danger)]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(r);
+                }}
+              >
+                <Trash2 size={16} />
+              </Button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Card View Component
+// ---------------------------------------------------------------------------
+
+type NodesCardViewProps = Omit<NodesListViewProps, "rows"> & {
+  rows: NodeRow[];
+};
+
+function NodesCardView({
+  rows,
+  onlineUsersByNode,
+  t,
+  onEdit,
+  onDelete,
+  onToggleEnable,
+  onStopXray,
+  onRestartXray,
+  onStopTelemt,
+  onRestartTelemt,
+  onViewMetrics,
+  togglingEnableId,
+  xrayStoppingId,
+  xrayRestartingId,
+  telemtStoppingId,
+  telemtRestartingId,
+}: NodesCardViewProps) {
+  const authModeLabel = (m?: string) => {
+    const k = (m ?? "legacy").toLowerCase();
+    if (k === "pairing" || k === LEGACY_NODE_AUTH_PAIRING)
+      return t("pages.nodes.authPairing");
+    return t("pages.nodes.authLegacy");
+  };
+
+  return (
+    <div className="grid gap-3 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-3">
+      {rows.map((r) => (
+        <div
+          key={r.id}
+          className={`rounded-xl border border-[var(--border)] p-4 transition-colors ${
+            r.enable === false ? "opacity-60" : ""
+          } cursor-pointer hover:border-[var(--accent)] hover:bg-[color-mix(in_oklab,var(--accent)_5%,transparent)]`}
+          onClick={() => onEdit(r)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onEdit(r);
+            }
+          }}
+        >
+          <div className="mb-3 flex items-start justify-between">
+            <div className="flex-1">
+              <div className="mb-1 font-semibold text-[var(--fg)]">{r.name}</div>
+              <div className="mb-2 font-mono text-xs text-[var(--fg-muted)]">{r.address}</div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  size="sm"
+                  checked={r.enable !== false}
+                  disabled={togglingEnableId === r.id}
+                  ariaLabel={t("pages.nodes.nodeEnabled")}
+                  onChange={(next) => {
+                    onToggleEnable(r, next);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <NodeStatusBadge status={r.status} t={t} />
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-3 space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-[var(--fg-subtle)]">{t("pages.nodes.authMode")}</span>
+              <span className="text-[var(--fg)]">{authModeLabel(r.authMode)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--fg-subtle)]">{t("pages.nodes.onlineUsers")}</span>
+              <span className="font-mono text-[var(--fg)]">{onlineUsersByNode[r.id] ?? 0}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--fg-subtle)]">{t("pages.nodes.responseTime")}</span>
+              <span className="font-mono text-[var(--fg)]">
+                {r.responseTime != null && r.responseTime > 0 ? `${r.responseTime} ms` : "—"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--fg-subtle)]">{t("pages.nodes.xrayVersion")}</span>
+              <span className="font-mono text-[var(--fg)]">{r.xrayVersion || "—"}</span>
+            </div>
+          </div>
+
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <XrayStateBadge state={r.xrayState} t={t} />
+              {r.enable && (r.xrayState || "").toLowerCase() === "running" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
+                  loading={xrayStoppingId === r.id}
+                  disabled={xrayStoppingId === r.id || xrayRestartingId === r.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStopXray(r);
+                  }}
+                >
+                  <Power size={14} />
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-1">
+              <TelemtStateBadge state={r.telemtState} t={t} />
+              {r.enable && (r.telemtState || "").toLowerCase() === "running" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
+                  loading={telemtStoppingId === r.id}
+                  disabled={telemtStoppingId === r.id || telemtRestartingId === r.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStopTelemt(r);
+                  }}
+                >
+                  <Power size={14} />
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              className="!p-1.5 flex-1 text-[var(--fg-muted)] hover:text-[var(--accent)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewMetrics(r);
+              }}
+            >
+              <Activity size={16} />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="!p-1.5 flex-1 text-[var(--fg-muted)] hover:text-[var(--danger)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(r);
+              }}
+            >
+              <Trash2 size={16} />
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function NodesPage() {
   const { t } = useTranslation();
   const toast = useToast();
@@ -347,6 +727,7 @@ export function NodesPage() {
   const [nameFilter, setNameFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [xrayStateFilter, setXrayStateFilter] = useState("all");
+  const [viewMode, setViewMode] = useState<"table" | "list" | "card">("table");
 
   const [addOpen, setAddOpen] = useState(false);
   const [addWizardStep, setAddWizardStep] = useState<1 | 2 | 3>(1);
@@ -1252,45 +1633,58 @@ export function NodesPage() {
                 </option>
               </SelectNative>
             </div>
-          <div className="panel-data-table overflow-x-auto">
-            <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-subtle)]">
-                  <th
-                    className="w-14 p-3"
-                    scope="col"
-                    aria-label={t("pages.nodes.nodeEnabled")}
-                  />
-                  <th className="p-3">{t("pages.nodes.name")}</th>
-                  <th className="p-3">{t("pages.nodes.address")}</th>
-                  <th className="p-3">{t("pages.nodes.authMode")}</th>
-                  <th className="p-3">{t("pages.nodes.status")}</th>
-                  <th className="p-3">
-                    {t("pages.nodes.onlineUsers")}
-                  </th>
-                  <th className="p-3">{t("pages.nodes.responseTime")}</th>
-                  <th className="p-3">{t("pages.nodes.workerVersion")}</th>
-                  <th className="p-3">{t("pages.nodes.xrayVersion")}</th>
-                  <th className="p-3">{t("pages.nodes.xrayState")}</th>
-                  <th className="p-3">{t("pages.nodes.telemtVersion")}</th>
-                  <th className="p-3">
-                    {t("pages.nodes.telemtState")}
-                  </th>
-                  <th className="p-3">{t("pages.nodes.assignedInbounds")}</th>
-                  <th className="p-3 w-28">{t("pages.nodes.operate")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedAndFilteredRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={14}
-                      className="p-6 text-center text-sm text-[var(--fg-subtle)]"
-                    >
-                      {t("pages.nodes.noMatches")}
-                    </td>
-                  </tr>
-                ) : sortedAndFilteredRows.map((r) => (
+            <div className="flex justify-end px-3">
+              <Segmented
+                value={viewMode}
+                onChange={(v) => setViewMode(v as "table" | "list" | "card")}
+                items={[
+                  { id: "table", label: "Table", icon: Table2 },
+                  { id: "list", label: "List", icon: List },
+                  { id: "card", label: "Card", icon: LayoutGrid },
+                ]}
+              />
+            </div>
+          <div className="overflow-hidden">
+            {viewMode === "table" && (
+              <div className="panel-data-table overflow-x-auto">
+                <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border)] text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-subtle)]">
+                      <th
+                        className="w-14 p-3"
+                        scope="col"
+                        aria-label={t("pages.nodes.nodeEnabled")}
+                      />
+                      <th className="p-3">{t("pages.nodes.name")}</th>
+                      <th className="p-3">{t("pages.nodes.address")}</th>
+                      <th className="p-3">{t("pages.nodes.authMode")}</th>
+                      <th className="p-3">{t("pages.nodes.status")}</th>
+                      <th className="p-3">
+                        {t("pages.nodes.onlineUsers")}
+                      </th>
+                      <th className="p-3">{t("pages.nodes.responseTime")}</th>
+                      <th className="p-3">{t("pages.nodes.workerVersion")}</th>
+                      <th className="p-3">{t("pages.nodes.xrayVersion")}</th>
+                      <th className="p-3">{t("pages.nodes.xrayState")}</th>
+                      <th className="p-3">{t("pages.nodes.telemtVersion")}</th>
+                      <th className="p-3">
+                        {t("pages.nodes.telemtState")}
+                      </th>
+                      <th className="p-3">{t("pages.nodes.assignedInbounds")}</th>
+                      <th className="p-3 w-28">{t("pages.nodes.operate")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedAndFilteredRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={14}
+                          className="p-6 text-center text-sm text-[var(--fg-subtle)]"
+                        >
+                          {t("pages.nodes.noMatches")}
+                        </td>
+                      </tr>
+                    ) : sortedAndFilteredRows.map((r) => (
                   <tr
                     key={r.id}
                     role="button"
@@ -1498,7 +1892,50 @@ export function NodesPage() {
                 ))}
               </tbody>
             </table>
+              </div>
+            )}
+            {viewMode === "list" && (
+              <NodesListView
+                rows={sortedAndFilteredRows}
+                onlineUsersByNode={onlineUsersByNode}
+                t={t}
+                onEdit={openEdit}
+                onDelete={setDeleteTarget}
+                onToggleEnable={patchNodeEnable}
+                onStopXray={stopXrayOnRow}
+                onRestartXray={restartXrayOnRow}
+                onStopTelemt={stopTelemtOnRow}
+                onRestartTelemt={restartTelemtOnRow}
+                onViewMetrics={(row) => setMetricsNode({ id: row.id, name: row.name })}
+                togglingEnableId={togglingEnableId}
+                xrayStoppingId={xrayStoppingId}
+                xrayRestartingId={xrayRestartingId}
+                telemtStoppingId={telemtStoppingId}
+                telemtRestartingId={telemtRestartingId}
+              />
+            )}
+            {viewMode === "card" && (
+              <NodesCardView
+                rows={sortedAndFilteredRows}
+                onlineUsersByNode={onlineUsersByNode}
+                t={t}
+                onEdit={openEdit}
+                onDelete={setDeleteTarget}
+                onToggleEnable={patchNodeEnable}
+                onStopXray={stopXrayOnRow}
+                onRestartXray={restartXrayOnRow}
+                onStopTelemt={stopTelemtOnRow}
+                onRestartTelemt={restartTelemtOnRow}
+                onViewMetrics={(row) => setMetricsNode({ id: row.id, name: row.name })}
+                togglingEnableId={togglingEnableId}
+                xrayStoppingId={xrayStoppingId}
+                xrayRestartingId={xrayRestartingId}
+                telemtStoppingId={telemtStoppingId}
+                telemtRestartingId={telemtRestartingId}
+              />
+            )}
           </div>
+          
           </div>
         )}
       </Surface>
