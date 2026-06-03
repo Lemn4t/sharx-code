@@ -23,6 +23,7 @@ import {
 import type { ReactNode, TextareaHTMLAttributes } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { getJson, postJson } from "@/lib/api";
 import {
   buildSettingsJson,

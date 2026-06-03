@@ -350,9 +350,7 @@ type NodesListViewProps = {
   onDelete: (row: NodeRow) => void;
   onToggleEnable: (row: NodeRow, enabled: boolean) => void;
   onStopXray: (row: NodeRow) => void;
-  onRestartXray: (row: NodeRow) => void;
   onStopTelemt: (row: NodeRow) => void;
-  onRestartTelemt: (row: NodeRow) => void;
   onViewMetrics: (row: NodeRow) => void;
   togglingEnableId: number | null;
   xrayStoppingId: number | null;
@@ -369,9 +367,7 @@ function NodesListView({
   onDelete,
   onToggleEnable,
   onStopXray,
-  onRestartXray,
   onStopTelemt,
-  onRestartTelemt,
   onViewMetrics,
   togglingEnableId,
   xrayStoppingId,
@@ -569,9 +565,7 @@ function NodesCardView({
   onDelete,
   onToggleEnable,
   onStopXray,
-  onRestartXray,
   onStopTelemt,
-  onRestartTelemt,
   onViewMetrics,
   togglingEnableId,
   xrayStoppingId,
@@ -1903,9 +1897,7 @@ export function NodesPage() {
                 onDelete={setDeleteTarget}
                 onToggleEnable={patchNodeEnable}
                 onStopXray={stopXrayOnRow}
-                onRestartXray={restartXrayOnRow}
                 onStopTelemt={stopTelemtOnRow}
-                onRestartTelemt={restartTelemtOnRow}
                 onViewMetrics={(row) => setMetricsNode({ id: row.id, name: row.name })}
                 togglingEnableId={togglingEnableId}
                 xrayStoppingId={xrayStoppingId}
@@ -1923,9 +1915,7 @@ export function NodesPage() {
                 onDelete={setDeleteTarget}
                 onToggleEnable={patchNodeEnable}
                 onStopXray={stopXrayOnRow}
-                onRestartXray={restartXrayOnRow}
                 onStopTelemt={stopTelemtOnRow}
-                onRestartTelemt={restartTelemtOnRow}
                 onViewMetrics={(row) => setMetricsNode({ id: row.id, name: row.name })}
                 togglingEnableId={togglingEnableId}
                 xrayStoppingId={xrayStoppingId}
