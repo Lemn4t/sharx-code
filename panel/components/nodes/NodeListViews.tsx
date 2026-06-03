@@ -386,6 +386,9 @@ export function NodeTileCardView({
           <MetaItem label={t("pages.nodes.xrayVersion")}>
             <span className="font-mono text-[11px]">{r.xrayVersion || "—"}</span>
           </MetaItem>
+          <MetaItem label={t("pages.nodes.telemtVersion")}>
+            <span className="font-mono text-[11px]">{r.telemtVersion || "—"}</span>
+          </MetaItem>
         </dl>
         <p className="line-clamp-2 text-[11px] leading-snug text-[var(--fg-subtle)]">
           <span className="font-semibold uppercase tracking-wide">

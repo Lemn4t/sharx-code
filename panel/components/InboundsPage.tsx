@@ -79,12 +79,13 @@ import {
   type ListViewMode,
   writeListViewMode,
 } from "@/lib/listViewModeStorage";
-import { CompareModeFilterField, type CompareOp } from "@/components/CompareModeFilterField";
+import { type CompareOp } from "@/components/CompareModeFilterField";
 import { InboundXrayCoreEditor } from "@/components/inbounds/InboundXrayCoreEditor";
 import {
   InboundListView,
   InboundTilesView,
 } from "@/components/inbounds/InboundListViews";
+import { InboundColumnFiltersBar } from "@/components/inbounds/InboundColumnFiltersBar";
 import { InboundTlsCertPinBlock } from "@/components/inbounds/InboundTlsCertPinBlock";
 import {
   roundTripInboundCoreConfig,
@@ -265,48 +266,6 @@ function compareInbounds(
   }
   if (c !== 0) return c * m;
   return (a.id - b.id) * m;
-}
-
-function InboundColumnFilterInput({
-  value,
-  onChange,
-  placeholder,
-  className = "",
-  prefix,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  className?: string;
-  prefix?: string;
-}) {
-  const input = (
-    <Input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      onClick={(e) => e.stopPropagation()}
-      placeholder={placeholder}
-      className={
-        prefix
-          ? `!h-8 min-w-0 flex-1 !border-0 !bg-transparent !px-2 !py-1 !text-xs ${className}`
-          : `!h-8 w-full min-w-[4.5rem] !px-2 !py-1 !text-xs ${className}`
-      }
-    />
-  );
-  if (!prefix) return input;
-  return (
-    <div
-      className={`flex min-w-0 items-stretch overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] ${className}`}
-    >
-      <span
-        className="flex shrink-0 items-center border-r border-[var(--border)] bg-[color-mix(in_oklab,var(--border)_35%,transparent)] px-1.5 font-mono text-xs font-semibold text-[var(--fg-muted)]"
-        aria-hidden
-      >
-        {prefix}
-      </span>
-      {input}
-    </div>
-  );
 }
 
 function InboundSortableTh({
@@ -731,7 +690,7 @@ export function InboundsPage() {
     setModalOpen(true);
   };
 
-  const openEdit = async (id: number) => {
+  const openEdit = useCallback(async (id: number) => {
     setModalOpen(true);
     setInboundModalView("form");
     setFetchingInbound(true);
@@ -811,7 +770,7 @@ export function InboundsPage() {
     } finally {
       setFetchingInbound(false);
     }
-  };
+  }, [t, toast]);
 
   const moveNodeBinding = useCallback((idx: number, dir: -1 | 1) => {
     setNodeBindings((rows) => {
@@ -1213,8 +1172,6 @@ export function InboundsPage() {
     preserveTraffic,
     coreConfigDraft,
     useCoreConfigDraftOnSubmit,
-    inboundModalView,
-    coreConfigDraftDirty,
     t,
   ]);
 
@@ -1711,7 +1668,7 @@ export function InboundsPage() {
       toggleEnableBusyId: toggleEnableBusyId,
       onDelete: (id: number) => setDeleteId(id),
     }),
-    [t, setInboundEnableFromRow, toggleEnableBusyId],
+    [t, openEdit, setInboundEnableFromRow, toggleEnableBusyId],
   );
 
   const isHysteriaFamily =
@@ -1823,7 +1780,20 @@ export function InboundsPage() {
           />
         </div>
       ) : null}
-      <Surface padding="none" className="overflow-visible">
+      {rows.length > 0 && filtersVisible ? (
+        <Surface padding="none" className="mb-2 overflow-hidden">
+          <InboundColumnFiltersBar
+            t={t}
+            columnFilters={columnFilters}
+            onColumnFiltersChange={setColumnFilters}
+            trafficCompareOp={trafficCompareOp}
+            onTrafficCompareOpChange={setTrafficCompareOp}
+            filterStatus={filterStatus}
+            onFilterStatusChange={setFilterStatus}
+          />
+        </Surface>
+      ) : null}
+      <Surface padding="none" className="overflow-hidden">
         {loading && !rows.length ? (
           <div className="grid min-h-48 place-items-center">
             <Spinner size={32} />
@@ -1897,96 +1867,6 @@ export function InboundsPage() {
                   />
                   <th className="p-3">{t("pages.inbounds.operate")}</th>
                 </tr>
-                {filtersVisible ? (
-                  <tr className="border-b border-[var(--border)] bg-[color-mix(in_oklab,var(--accent)_6%,transparent)]">
-                    <th className="p-2 align-top font-normal">
-                      <InboundColumnFilterInput
-                        value={columnFilters.remark}
-                        onChange={(v) =>
-                          setColumnFilters((f) => ({ ...f, remark: v }))
-                        }
-                        placeholder={t("pages.clients.filterColEmail", {
-                          defaultValue: "Contains…",
-                        })}
-                      />
-                    </th>
-                    <th className="p-2 align-top font-normal">
-                      <InboundColumnFilterInput
-                        value={columnFilters.tag}
-                        onChange={(v) =>
-                          setColumnFilters((f) => ({ ...f, tag: v }))
-                        }
-                        placeholder={t("pages.inbounds.filterTag", {
-                          defaultValue: "Tag contains…",
-                        })}
-                      />
-                    </th>
-                    <th className="p-2 align-top font-normal">
-                      <InboundColumnFilterInput
-                        value={columnFilters.protocol}
-                        onChange={(v) =>
-                          setColumnFilters((f) => ({ ...f, protocol: v }))
-                        }
-                        placeholder={t("pages.clients.filterColComment", {
-                          defaultValue: "Contains…",
-                        })}
-                      />
-                    </th>
-                    <th className="p-2 align-top font-normal">
-                      <InboundColumnFilterInput
-                        value={columnFilters.port}
-                        onChange={(v) =>
-                          setColumnFilters((f) => ({ ...f, port: v }))
-                        }
-                        placeholder={t("pages.inbounds.filterPort", {
-                          defaultValue: "Contains…",
-                        })}
-                      />
-                    </th>
-                    <th className="p-2 align-top font-normal">
-                      <CompareModeFilterField
-                        mode="traffic"
-                        compareOp={trafficCompareOp}
-                        onCompareOpChange={setTrafficCompareOp}
-                        value={columnFilters.traffic}
-                        onValueChange={(v) =>
-                          setColumnFilters((f) => ({ ...f, traffic: v }))
-                        }
-                        placeholder={
-                          trafficCompareOp === ""
-                            ? t("pages.clients.filterColTraffic", {
-                                defaultValue: "Contains…",
-                              })
-                            : t("pages.clients.filterTrafficAmount", {
-                                defaultValue: "e.g. 10 gb",
-                              })
-                        }
-                        className="w-full"
-                      />
-                    </th>
-                    <th className="p-2 align-top font-normal">
-                      <SelectNative
-                        inputSize="sm"
-                        className="w-full min-w-0 shadow-none"
-                        value={filterStatus}
-                        onChange={(e) =>
-                          setFilterStatus(e.target.value as InboundFilterStatus)
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label={t("status")}
-                      >
-                        <option value="">
-                          {t("pages.clients.filterConnAll", {
-                            defaultValue: "All",
-                          })}
-                        </option>
-                        <option value="enabled">{t("enabled")}</option>
-                        <option value="disabled">{t("disabled")}</option>
-                      </SelectNative>
-                    </th>
-                    <th className="p-2" aria-hidden />
-                  </tr>
-                ) : null}
               </thead>
               <tbody>
                 {displayedInboundRows.length === 0 ? (

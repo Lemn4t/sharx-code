@@ -995,9 +995,6 @@ function isObfuscationHeaderType(s: string): s is HeaderObfuscationType {
   );
 }
 
-/** @deprecated use isObfuscationHeaderType */
-const isQuicHeaderType = isObfuscationHeaderType;
-
 function alpnToString(alpn: unknown): string {
   if (!Array.isArray(alpn)) return "http/1.1";
   return alpn.filter((x) => typeof x === "string").join(", ");

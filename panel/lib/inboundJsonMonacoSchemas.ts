@@ -6,7 +6,7 @@ import type { InboundFormProtocol } from "@/lib/inboundDefaults";
 const D = (t: TFunction, key: string, defaultValue: string) =>
   t(key, { defaultValue });
 
-function sniffingSchema(t: TFunction): object {
+function sniffingSchema(): object {
   return {
     type: "object",
     additionalProperties: false,
@@ -100,7 +100,7 @@ export function inboundJsonMonacoSchemas(
   entries.push({
     uri: "inbound://sniffing",
     fileMatch: ["inbound-sniffing.json"],
-    schema: sniffingSchema(t),
+    schema: sniffingSchema(),
   });
   const settings = serverSettingsSchema(protocol, t);
   if (settings) {
@@ -185,7 +185,7 @@ export function inboundCoreConfigMonacoSchemas(
           tag: { type: "string" },
           settings: coreSettingsSchema(protocol, t),
           streamSettings: stream,
-          sniffing: sniffingSchema(t),
+          sniffing: sniffingSchema(),
           acceptProxyProtocol: { type: "boolean" },
         },
         additionalProperties: false,

@@ -3,6 +3,7 @@
 import {
   Activity,
   Copy,
+  Filter,
   LayoutGrid,
   LayoutList,
   Network,
@@ -35,6 +36,7 @@ import {
   NodeTilesView,
   type NodeViewMode,
 } from "@/components/nodes/NodeListViews";
+import { NodeColumnFiltersBar } from "@/components/nodes/NodeColumnFiltersBar";
 import {
   NodeStatusBadge,
   TelemtStateBadge,
@@ -53,6 +55,7 @@ import {
   CheckboxField,
   RadioOptionCard,
   HelpTooltip,
+  IconButton,
   IconTile,
   Input,
   Modal,
@@ -191,6 +194,7 @@ export function NodesPage() {
   const [nameFilter, setNameFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [xrayStateFilter, setXrayStateFilter] = useState("all");
+  const [filtersVisible, setFiltersVisible] = useState(false);
   const [viewMode, setViewModeState] = useState<NodeViewMode>("table");
 
   useEffect(() => {
@@ -991,12 +995,15 @@ export function NodesPage() {
     }
   };
 
-  const authModeLabel = (m?: string) => {
-    const k = (m ?? "legacy").toLowerCase();
-    if (k === "pairing" || k === LEGACY_NODE_AUTH_PAIRING)
-      return t("pages.nodes.authPairing");
-    return t("pages.nodes.authLegacy");
-  };
+  const authModeLabel = useCallback(
+    (m?: string) => {
+      const k = (m ?? "legacy").toLowerCase();
+      if (k === "pairing" || k === LEGACY_NODE_AUTH_PAIRING)
+        return t("pages.nodes.authPairing");
+      return t("pages.nodes.authLegacy");
+    },
+    [t],
+  );
 
   const sortedAndFilteredRows = useMemo(() => {
     const q = nameFilter.trim().toLowerCase();
@@ -1021,6 +1028,14 @@ export function NodesPage() {
       return true;
     });
   }, [rows, nameFilter, statusFilter, xrayStateFilter]);
+
+  const hasActiveNodeFilters = useMemo(() => {
+    return (
+      nameFilter.trim() !== "" ||
+      statusFilter !== "all" ||
+      xrayStateFilter !== "all"
+    );
+  }, [nameFilter, statusFilter, xrayStateFilter]);
 
   const listViewCtx = useMemo(
     () => ({
@@ -1083,6 +1098,85 @@ export function NodesPage() {
         }
       />
       <Reveal>
+      {rows.length > 0 ? (
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <IconButton
+              type="button"
+              label={
+                filtersVisible
+                  ? t("pages.clients.filterToggleHide", {
+                      defaultValue: "Hide column filters",
+                    })
+                  : t("pages.clients.filterToggleShow", {
+                      defaultValue: "Show column filters",
+                    })
+              }
+              aria-pressed={filtersVisible}
+              className={
+                filtersVisible
+                  ? "!border-[color-mix(in_oklab,var(--accent)_40%,var(--border))] !bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] !text-[var(--accent)]"
+                  : undefined
+              }
+              onClick={() => setFiltersVisible((v) => !v)}
+            >
+              <Filter size={18} />
+            </IconButton>
+            {hasActiveNodeFilters ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="!h-9 shrink-0 !gap-2 !text-xs"
+                onClick={() => {
+                  setNameFilter("");
+                  setStatusFilter("all");
+                  setXrayStateFilter("all");
+                }}
+              >
+                {t("pages.clients.filterClear", {
+                  defaultValue: "Reset filters",
+                })}
+              </Button>
+            ) : null}
+          </div>
+          <Segmented<NodeViewMode>
+            value={viewMode}
+            onChange={setViewMode}
+            size="sm"
+            layoutId="nodes-view-mode"
+            items={[
+              {
+                id: "table",
+                label: t("pages.nodes.viewModeTable", { defaultValue: "Table" }),
+                icon: Table2,
+              },
+              {
+                id: "list",
+                label: t("pages.nodes.viewModeList", { defaultValue: "List" }),
+                icon: LayoutList,
+              },
+              {
+                id: "tiles",
+                label: t("pages.nodes.viewModeTiles", { defaultValue: "Tiles" }),
+                icon: LayoutGrid,
+              },
+            ]}
+          />
+        </div>
+      ) : null}
+      {rows.length > 0 && filtersVisible ? (
+        <Surface padding="none" className="mb-2 overflow-hidden">
+          <NodeColumnFiltersBar
+            t={t}
+            nameFilter={nameFilter}
+            onNameFilterChange={setNameFilter}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            xrayStateFilter={xrayStateFilter}
+            onXrayStateFilterChange={setXrayStateFilter}
+          />
+        </Surface>
+      ) : null}
       <Surface padding="none" className="overflow-hidden">
         {loading && !rows.length ? (
           <div className="grid min-h-48 place-items-center">
@@ -1102,72 +1196,7 @@ export function NodesPage() {
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            <div className="flex flex-col gap-2 px-3 pt-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="grid flex-1 gap-2 sm:grid-cols-[1fr,11rem,11rem]">
-              <Input
-                value={nameFilter}
-                onChange={(e) => setNameFilter(e.target.value)}
-                placeholder={t("pages.nodes.search")}
-              />
-              <SelectNative
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="all">
-                  {t("pages.nodes.filterAllStatuses")}
-                </option>
-                <option value="online">{t("pages.nodes.online")}</option>
-                <option value="offline">{t("pages.nodes.offline")}</option>
-                <option value="unknown">{t("pages.nodes.unknown")}</option>
-                <option value="error">{t("pages.nodes.error")}</option>
-              </SelectNative>
-              <SelectNative
-                value={xrayStateFilter}
-                onChange={(e) => setXrayStateFilter(e.target.value)}
-              >
-                <option value="all">
-                  {t("pages.nodes.filterAllXrayStates")}
-                </option>
-                <option value="running">
-                  {t("pages.nodes.xrayStateRunning")}
-                </option>
-                <option value="stopped">
-                  {t("pages.nodes.xrayStateStopped")}
-                </option>
-                <option value="error">
-                  {t("pages.nodes.xrayStateError")}
-                </option>
-                <option value="unknown">
-                  {t("pages.nodes.xrayStateUnknown")}
-                </option>
-              </SelectNative>
-              </div>
-              <Segmented<NodeViewMode>
-                value={viewMode}
-                onChange={setViewMode}
-                size="sm"
-                layoutId="nodes-view-mode"
-                items={[
-                  {
-                    id: "table",
-                    label: t("pages.nodes.viewModeTable", { defaultValue: "Table" }),
-                    icon: Table2,
-                  },
-                  {
-                    id: "list",
-                    label: t("pages.nodes.viewModeList", { defaultValue: "List" }),
-                    icon: LayoutList,
-                  },
-                  {
-                    id: "tiles",
-                    label: t("pages.nodes.viewModeTiles", { defaultValue: "Tiles" }),
-                    icon: LayoutGrid,
-                  },
-                ]}
-              />
-            </div>
-          {viewMode === "table" ? (
+          viewMode === "table" ? (
           <div className="panel-data-table overflow-x-auto">
             <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
               <thead>
@@ -1427,8 +1456,7 @@ export function NodesPage() {
               ctx={listViewCtx}
               emptyLabel={t("pages.nodes.noMatches")}
             />
-          )}
-          </div>
+          )
         )}
       </Surface>
       </Reveal>

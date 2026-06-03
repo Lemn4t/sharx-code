@@ -17,7 +17,7 @@ import {
   serializeOutboundsSection,
   updateRowProtocol,
 } from "@/lib/xrayOutboundForm";
-import { Button, CheckboxField, Input, SelectNative } from "@/components/ui";
+import { Button, Input, SelectNative } from "@/components/ui";
 
 type Props = {
   value: string;
@@ -216,12 +216,6 @@ function OutboundSettingsBody({
     const secInPreset = isInStringList(secVal, OUTBOUND_STREAM_SECURITY_OPTIONS);
     const patchStream = (patch: Record<string, unknown>) => {
       onRow({ ...v, raw: { ...v.raw, streamSettings: { ...str, ...patch } } });
-    };
-    const applyStreamSecurity = (nextSec: string) => {
-      const next: Record<string, unknown> = { ...str, security: nextSec };
-      if (nextSec !== "reality") delete next.realitySettings;
-      if (nextSec !== "tls") delete next.tlsSettings;
-      onRow({ ...v, raw: { ...v.raw, streamSettings: next } });
     };
     const rs = asRec(str.realitySettings);
     const tls = asRec(str.tlsSettings);
