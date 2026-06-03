@@ -5,8 +5,10 @@ on:
     tags:
       - "v*.*.*"
       - "v*.*.*-beta"
+      - "v*.*.*-dev"
       - "*.*.*"
       - "*.*.*-beta"
+      - "*.*.*-dev"
 
 permissions:
   contents: write
@@ -18,7 +20,8 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       version_for_file: ${{ steps.version.outputs.version_for_file }}
-      is_beta: ${{ steps.version.outputs.is_beta }}
+      release_channel: ${{ steps.version.outputs.release_channel }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout repository
@@ -32,26 +35,40 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/}
           # Remove 'v' prefix if present
           VERSION=${TAG#v}
-          # Check if it's a beta tag
           if [[ "$VERSION" == *"-beta" ]]; then
-            IS_BETA=true
-            VERSION_WITHOUT_BETA=${VERSION%-beta}
-            # For beta, keep the version as is (e.g., "1.0.0-beta")
-            VERSION_FOR_FILE="$VERSION_WITHOUT_BETA"
+            RELEASE_CHANNEL=beta
+            IS_PRERELEASE=true
+            VERSION_FOR_FILE="${VERSION%-beta}"
+          elif [[ "$VERSION" == *"-dev" ]]; then
+            RELEASE_CHANNEL=dev
+            IS_PRERELEASE=true
+            VERSION_FOR_FILE="${VERSION%-dev}"
           else
-            IS_BETA=false
-            VERSION_WITHOUT_BETA=$VERSION
-            # For main, use clean version (e.g., "1.0.0")
+            RELEASE_CHANNEL=main
+            IS_PRERELEASE=false
             VERSION_FOR_FILE="$VERSION"
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "version_without_beta=$VERSION_WITHOUT_BETA" >> $GITHUB_OUTPUT
           echo "version_for_file=$VERSION_FOR_FILE" >> $GITHUB_OUTPUT
-          echo "is_beta=$IS_BETA" >> $GITHUB_OUTPUT
+          echo "release_channel=$RELEASE_CHANNEL" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
           echo "Version for file: $VERSION_FOR_FILE"
-          echo "Is beta: $IS_BETA"
+          echo "Release channel: $RELEASE_CHANNEL"
+          echo "Prerelease: $IS_PRERELEASE"
+
+      - name: Verify tag commit is on release branch
+        run: |
+          CHANNEL="${{ steps.version.outputs.release_channel }}"
+          git fetch origin "$CHANNEL"
+          TAG_COMMIT=$(git rev-parse HEAD)
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" "origin/$CHANNEL"; then
+            echo "❌ Tag commit $TAG_COMMIT is not on branch origin/$CHANNEL"
+            echo "Create the tag from the latest commit on $CHANNEL (e.g. git checkout $CHANNEL && git tag ...)"
+            exit 1
+          fi
+          echo "✅ Tag commit is on origin/$CHANNEL"
 
       - name: Update version file for build
         run: |
@@ -61,11 +78,12 @@ jobs:
 
       - name: Update version in branch
         run: |
-          # Determine branch from tag
-          if [[ "${{ steps.version.outputs.is_beta }}" == "true" ]]; then
-            BRANCH="beta"
-          else
-            BRANCH="main"
+          BRANCH="${{ steps.version.outputs.release_channel }}"
+          if [[ "$BRANCH" == "main" ]]; then
+            : # main channel maps to main branch
+          elif [[ "$BRANCH" != "beta" && "$BRANCH" != "dev" ]]; then
+            echo "Unknown release channel: $BRANCH"
+            exit 1
           fi
           
           echo "Updating version in branch: $BRANCH"
@@ -151,15 +169,14 @@ jobs:
           HARBOR_HOST: ${{ secrets.HARBOR_HOST }}
           HARBOR_PROJECT: ${{ secrets.HARBOR_PROJECT }}
           VERSION: ${{ needs.prepare.outputs.version }}
-          IS_BETA: ${{ needs.prepare.outputs.is_beta }}
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
         run: |
-          if [ "$IS_BETA" = "true" ]; then
-            SHARX_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharx:$VERSION"
-            SHARX_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharx:latest-beta"
-          else
-            SHARX_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharx:$VERSION"
-            SHARX_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharx:latest"
-          fi
+          SHARX_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharx:$VERSION"
+          case "$RELEASE_CHANNEL" in
+            beta) SHARX_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharx:latest-beta" ;;
+            dev)  SHARX_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharx:latest-dev" ;;
+            *)    SHARX_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharx:latest" ;;
+          esac
           
           echo "✅ SharX tags: $SHARX_TAG_VERSION, $SHARX_TAG_LATEST"
           
@@ -216,15 +233,14 @@ jobs:
           HARBOR_HOST: ${{ secrets.HARBOR_HOST }}
           HARBOR_PROJECT: ${{ secrets.HARBOR_PROJECT }}
           VERSION: ${{ needs.prepare.outputs.version }}
-          IS_BETA: ${{ needs.prepare.outputs.is_beta }}
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
         run: |
-          if [ "$IS_BETA" = "true" ]; then
-            SHARXNODE_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:$VERSION"
-            SHARXNODE_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:latest-beta"
-          else
-            SHARXNODE_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:$VERSION"
-            SHARXNODE_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:latest"
-          fi
+          SHARXNODE_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:$VERSION"
+          case "$RELEASE_CHANNEL" in
+            beta) SHARXNODE_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:latest-beta" ;;
+            dev)  SHARXNODE_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:latest-dev" ;;
+            *)    SHARXNODE_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:latest" ;;
+          esac
           
           echo "✅ SharXNode tags: $SHARXNODE_TAG_VERSION, $SHARXNODE_TAG_LATEST"
           
@@ -293,19 +309,24 @@ jobs:
           HARBOR_HOST="${{ secrets.HARBOR_HOST }}"
           HARBOR_PROJECT="${{ secrets.HARBOR_PROJECT }}"
           VERSION="${{ needs.prepare.outputs.version }}"
-          IS_BETA="${{ needs.prepare.outputs.is_beta }}"
+          RELEASE_CHANNEL="${{ needs.prepare.outputs.release_channel }}"
           
-          if [ "$IS_BETA" = "true" ]; then
-            SHARX_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharx:$VERSION"
-            SHARX_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharx:latest-beta"
-            SHARXNODE_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:$VERSION"
-            SHARXNODE_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:latest-beta"
-          else
-            SHARX_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharx:$VERSION"
-            SHARX_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharx:latest"
-            SHARXNODE_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:$VERSION"
-            SHARXNODE_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:latest"
-          fi
+          SHARX_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharx:$VERSION"
+          SHARXNODE_TAG_VERSION="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:$VERSION"
+          case "$RELEASE_CHANNEL" in
+            beta)
+              SHARX_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharx:latest-beta"
+              SHARXNODE_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:latest-beta"
+              ;;
+            dev)
+              SHARX_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharx:latest-dev"
+              SHARXNODE_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:latest-dev"
+              ;;
+            *)
+              SHARX_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharx:latest"
+              SHARXNODE_TAG_LATEST="$HARBOR_HOST/$HARBOR_PROJECT/sharxnode:latest"
+              ;;
+          esac
           
           echo "sharx_tag_version=$SHARX_TAG_VERSION" >> $GITHUB_OUTPUT
           echo "sharx_tag_latest=$SHARX_TAG_LATEST" >> $GITHUB_OUTPUT
@@ -346,11 +367,12 @@ jobs:
             
             See commit history for detailed changes.
           draft: false
-          prerelease: ${{ needs.prepare.outputs.is_beta == 'true' }}
+          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release in SharX repository
+        if: needs.prepare.outputs.release_channel != 'dev'
         run: |
           # Check if token is available
           if [ -z "${{ secrets.SHARX_REPO_TOKEN }}" ]; then
@@ -360,7 +382,7 @@ jobs:
           
           TAG="${{ needs.prepare.outputs.tag }}"
           VERSION="${{ needs.prepare.outputs.version }}"
-          IS_BETA="${{ needs.prepare.outputs.is_beta }}"
+          IS_PRERELEASE="${{ needs.prepare.outputs.is_prerelease }}"
           
           # Set variables needed for release body (used in both if and else blocks)
           HARBOR_HOST="${{ secrets.HARBOR_HOST }}"
@@ -415,7 +437,7 @@ jobs:
             --arg name "Release $TAG" \
             --argjson body "$RELEASE_BODY_JSON" \
             --argjson draft false \
-            --argjson prerelease "$IS_BETA" \
+            --argjson prerelease "$IS_PRERELEASE" \
             '{tag_name: $tag, name: $name, body: $body, draft: $draft, prerelease: $prerelease}')
           
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
@@ -448,7 +470,7 @@ jobs:
                 --arg name "Release $TAG" \
                 --argjson body "$RELEASE_BODY_JSON" \
                 --argjson draft false \
-                --argjson prerelease "$IS_BETA" \
+                --argjson prerelease "$IS_PRERELEASE" \
                 '{name: $name, body: $body, draft: $draft, prerelease: $prerelease}')
               
               UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X PATCH \
