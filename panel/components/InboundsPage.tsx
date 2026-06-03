@@ -1793,20 +1793,23 @@ export function InboundsPage() {
           />
         </Surface>
       ) : null}
-      <Surface padding="none" className="overflow-hidden">
-        {loading && !rows.length ? (
+      {loading && !rows.length ? (
+        <Surface padding="none" className="overflow-hidden">
           <div className="grid min-h-48 place-items-center">
             <Spinner size={32} />
           </div>
-        ) : !rows.length ? (
+        </Surface>
+      ) : !rows.length ? (
+        <Surface padding="none" className="overflow-hidden">
           <div className="grid min-h-48 place-items-center px-4 py-12">
             <div className="flex flex-col items-center gap-3 text-center">
               <IconTile icon={User} tone="neutral" size="lg" />
               <p className="text-sm text-[var(--fg-muted)]">{t("noData")}</p>
             </div>
           </div>
-        ) : (
-          viewMode === "table" ? (
+        </Surface>
+      ) : viewMode === "table" ? (
+        <Surface padding="none" className="overflow-hidden">
           <div className="panel-data-table overflow-x-auto">
             <table className="w-full min-w-[1020px] table-fixed border-collapse text-left text-sm">
               <colgroup>
@@ -1947,25 +1950,24 @@ export function InboundsPage() {
               </tbody>
             </table>
           </div>
-          ) : viewMode === "list" ? (
-            <InboundListView
-              rows={displayedInboundRows}
-              ctx={inboundListViewCtx}
-              emptyLabel={t("pages.inbounds.filterNoResults", {
-                defaultValue: "No inbounds match the current filters.",
-              })}
-            />
-          ) : (
-            <InboundTilesView
-              rows={displayedInboundRows}
-              ctx={inboundListViewCtx}
-              emptyLabel={t("pages.inbounds.filterNoResults", {
-                defaultValue: "No inbounds match the current filters.",
-              })}
-            />
-          )
-        )}
-      </Surface>
+        </Surface>
+      ) : viewMode === "list" ? (
+        <InboundListView
+          rows={displayedInboundRows}
+          ctx={inboundListViewCtx}
+          emptyLabel={t("pages.inbounds.filterNoResults", {
+            defaultValue: "No inbounds match the current filters.",
+          })}
+        />
+      ) : (
+        <InboundTilesView
+          rows={displayedInboundRows}
+          ctx={inboundListViewCtx}
+          emptyLabel={t("pages.inbounds.filterNoResults", {
+            defaultValue: "No inbounds match the current filters.",
+          })}
+        />
+      )}
       </Reveal>
 
       <Modal

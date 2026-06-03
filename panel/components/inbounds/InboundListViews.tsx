@@ -238,11 +238,11 @@ export function InboundListView({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="px-3 pb-6 text-center text-sm text-[var(--fg-subtle)]">{emptyLabel}</p>
+      <p className="pb-6 text-center text-sm text-[var(--fg-subtle)]">{emptyLabel}</p>
     );
   }
   return (
-    <div className="space-y-3 px-3 pb-3">
+    <div className="space-y-3 pb-3">
       {rows.map((r) => (
         <InboundListRowView key={r.id} r={r} ctx={ctx} />
       ))}
@@ -261,11 +261,11 @@ export function InboundTilesView({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="px-3 pb-6 text-center text-sm text-[var(--fg-subtle)]">{emptyLabel}</p>
+      <p className="pb-6 text-center text-sm text-[var(--fg-subtle)]">{emptyLabel}</p>
     );
   }
   return (
-    <div className="grid grid-cols-1 gap-3 px-3 pb-3 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 pb-3 sm:grid-cols-2 xl:grid-cols-3">
       {rows.map((r) => (
         <InboundTileCardView key={r.id} r={r} ctx={ctx} />
       ))}

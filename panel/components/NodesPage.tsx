@@ -1177,12 +1177,14 @@ export function NodesPage() {
           />
         </Surface>
       ) : null}
-      <Surface padding="none" className="overflow-hidden">
-        {loading && !rows.length ? (
+      {loading && !rows.length ? (
+        <Surface padding="none" className="overflow-hidden">
           <div className="grid min-h-48 place-items-center">
             <Spinner size={32} />
           </div>
-        ) : rows.length === 0 ? (
+        </Surface>
+      ) : rows.length === 0 ? (
+        <Surface padding="none" className="overflow-hidden">
           <div className="grid min-h-48 place-content-center gap-4 px-4 py-8 text-center text-sm text-[var(--fg-muted)]">
             <div className="flex flex-col items-center gap-3">
               <IconTile icon={Network} tone="neutral" size="lg" />
@@ -1195,8 +1197,9 @@ export function NodesPage() {
               </Button>
             </div>
           </div>
-        ) : (
-          viewMode === "table" ? (
+        </Surface>
+      ) : viewMode === "table" ? (
+        <Surface padding="none" className="overflow-hidden">
           <div className="panel-data-table overflow-x-auto">
             <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
               <thead>
@@ -1444,21 +1447,20 @@ export function NodesPage() {
               </tbody>
             </table>
           </div>
-          ) : viewMode === "list" ? (
-            <NodeListView
-              rows={sortedAndFilteredRows}
-              ctx={listViewCtx}
-              emptyLabel={t("pages.nodes.noMatches")}
-            />
-          ) : (
-            <NodeTilesView
-              rows={sortedAndFilteredRows}
-              ctx={listViewCtx}
-              emptyLabel={t("pages.nodes.noMatches")}
-            />
-          )
-        )}
-      </Surface>
+        </Surface>
+      ) : viewMode === "list" ? (
+        <NodeListView
+          rows={sortedAndFilteredRows}
+          ctx={listViewCtx}
+          emptyLabel={t("pages.nodes.noMatches")}
+        />
+      ) : (
+        <NodeTilesView
+          rows={sortedAndFilteredRows}
+          ctx={listViewCtx}
+          emptyLabel={t("pages.nodes.noMatches")}
+        />
+      )}
       </Reveal>
 
       <Modal
