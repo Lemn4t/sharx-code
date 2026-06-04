@@ -28,6 +28,7 @@ import { SETTINGS_TAB_IDS, tSettingsTabLabel } from "@/lib/settingsTabs";
 import { getUiPref } from "@/lib/uiPrefs";
 import { PanelHeaderAppMeta } from "@/components/panel/PanelHeaderAppMeta";
 import { PanelTelegramNavLink } from "@/components/panel/PanelTelegramNavLink";
+import { StarWarsCinemaDecor } from "@/components/panel/StarWarsCinemaDecor";
 
 type NavItem = { key: string; href: string; icon: React.ReactNode; label: string };
 type NavEntry =
@@ -244,6 +245,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
         <span className="panel-cinema-bg__hyperspace" />
         <span className="panel-cinema-bg__stars" />
         <span className="panel-cinema-bg__lasers" />
+        <StarWarsCinemaDecor />
       </div>
       <header className="panel-navbar relative z-[60] shrink-0">
         <div className="mx-auto flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
