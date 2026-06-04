@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
-import { Fira_Mono, Montserrat, Sacramento, Unbounded } from "next/font/google";
+import {
+  Fira_Mono,
+  Montserrat,
+  Orbitron,
+  Pathway_Gothic_One,
+  Sacramento,
+  Unbounded,
+} from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { themeInitScript } from "@/lib/theme-provider";
@@ -30,6 +37,21 @@ const sacramento = Sacramento({
   display: "swap",
 });
 
+/** Star Wars theme — display / crawl-style headings */
+const orbitron = Orbitron({
+  variable: "--font-orbitron",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  display: "swap",
+});
+
+const pathwayGothic = Pathway_Gothic_One({
+  variable: "--font-pathway",
+  subsets: ["latin"],
+  weight: "400",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "SharX",
   description: "SharX panel",
@@ -53,7 +75,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body
-        className={`${montserrat.variable} ${unbounded.variable} ${firaMono.variable} ${sacramento.variable} antialiased`}
+        className={`${montserrat.variable} ${unbounded.variable} ${firaMono.variable} ${sacramento.variable} ${orbitron.variable} ${pathwayGothic.variable} antialiased`}
         style={{ fontFamily: "var(--font-sans)" }}
       >
         <Providers>{children}</Providers>
