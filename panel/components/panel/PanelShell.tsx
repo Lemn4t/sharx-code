@@ -240,6 +240,11 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="panel-root flex min-h-dvh flex-col text-[var(--fg)] md:h-dvh md:max-h-dvh md:overflow-hidden">
+      <div className="panel-cinema-bg" aria-hidden>
+        <span className="panel-cinema-bg__hyperspace" />
+        <span className="panel-cinema-bg__stars" />
+        <span className="panel-cinema-bg__lasers" />
+      </div>
       <header className="panel-navbar relative z-[60] shrink-0">
         <div className="mx-auto flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
           <div className="flex min-w-0 flex-1 items-center gap-2">

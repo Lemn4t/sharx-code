@@ -1,7 +1,6 @@
-/* Star Wars panel theme — fonts, starfield, lightsaber / laser ambience */
+/* Star Wars — cinematic FX live in the panel shell only (not subscription / login). */
 
-:root[data-panel-theme="starWars"],
-.root[data-color-preset="starWars"] {
+:root[data-panel-theme="starWars"] {
   --sw-starfield: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22512%22%20height%3D%22512%22%20viewBox%3D%220%200%20512%20512%22%3E%3Crect%20width%3D%22512%22%20height%3D%22512%22%20fill%3D%22%23030508%22%2F%3E%3Cg%20fill%3D%22%23fff%22%3E%3Ccircle%20cx%3D%2224%22%20cy%3D%2218%22%20r%3D%220.6%22%20opacity%3D%220.9%22%2F%3E%3Ccircle%20cx%3D%2288%22%20cy%3D%2242%22%20r%3D%220.4%22%20opacity%3D%220.5%22%2F%3E%3Ccircle%20cx%3D%22156%22%20cy%3D%2212%22%20r%3D%220.7%22%20opacity%3D%220.85%22%2F%3E%3Ccircle%20cx%3D%22220%22%20cy%3D%2268%22%20r%3D%220.5%22%20opacity%3D%220.6%22%2F%3E%3Ccircle%20cx%3D%22312%22%20cy%3D%2228%22%20r%3D%220.6%22%20opacity%3D%220.75%22%2F%3E%3Ccircle%20cx%3D%22388%22%20cy%3D%2254%22%20r%3D%220.4%22%20opacity%3D%220.55%22%2F%3E%3Ccircle%20cx%3D%22468%22%20cy%3D%2216%22%20r%3D%220.8%22%20opacity%3D%220.9%22%2F%3E%3Ccircle%20cx%3D%2244%22%20cy%3D%22112%22%20r%3D%220.5%22%20opacity%3D%220.65%22%2F%3E%3Ccircle%20cx%3D%22128%22%20cy%3D%2296%22%20r%3D%220.6%22%20opacity%3D%220.8%22%2F%3E%3Ccircle%20cx%3D%22204%22%20cy%3D%22140%22%20r%3D%220.4%22%20opacity%3D%220.45%22%2F%3E%3Ccircle%20cx%3D%22296%22%20cy%3D%22108%22%20r%3D%220.7%22%20opacity%3D%220.7%22%2F%3E%3Ccircle%20cx%3D%22372%22%20cy%3D%22124%22%20r%3D%220.5%22%20opacity%3D%220.6%22%2F%3E%3Ccircle%20cx%3D%22452%22%20cy%3D%2298%22%20r%3D%220.6%22%20opacity%3D%220.85%22%2F%3E%3Ccircle%20cx%3D%2268%22%20cy%3D%22188%22%20r%3D%220.4%22%20opacity%3D%220.5%22%2F%3E%3Ccircle%20cx%3D%22172%22%20cy%3D%22204%22%20r%3D%220.8%22%20opacity%3D%220.95%22%2F%3E%3Ccircle%20cx%3D%22248%22%20cy%3D%22176%22%20r%3D%220.5%22%20opacity%3D%220.55%22%2F%3E%3Ccircle%20cx%3D%22336%22%20cy%3D%22192%22%20r%3D%220.6%22%20opacity%3D%220.75%22%2F%3E%3Ccircle%20cx%3D%22420%22%20cy%3D%22168%22%20r%3D%220.4%22%20opacity%3D%220.5%22%2F%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%22248%22%20r%3D%220.6%22%20opacity%3D%220.7%22%2F%3E%3Ccircle%20cx%3D%2296%22%20cy%3D%22268%22%20r%3D%220.5%22%20opacity%3D%220.65%22%2F%3E%3Ccircle%20cx%3D%22188%22%20cy%3D%22252%22%20r%3D%220.4%22%20opacity%3D%220.4%22%2F%3E%3Ccircle%20cx%3D%22264%22%20cy%3D%22288%22%20r%3D%220.7%22%20opacity%3D%220.8%22%2F%3E%3Ccircle%20cx%3D%22348%22%20cy%3D%22244%22%20r%3D%220.5%22%20opacity%3D%220.6%22%2F%3E%3Ccircle%20cx%3D%22432%22%20cy%3D%22272%22%20r%3D%220.6%22%20opacity%3D%220.9%22%2F%3E%3Ccircle%20cx%3D%22488%22%20cy%3D%22228%22%20r%3D%220.4%22%20opacity%3D%220.45%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%22332%22%20r%3D%220.7%22%20opacity%3D%220.85%22%2F%3E%3Ccircle%20cx%3D%22140%22%20cy%3D%22308%22%20r%3D%220.5%22%20opacity%3D%220.55%22%2F%3E%3Ccircle%20cx%3D%22228%22%20cy%3D%22348%22%20r%3D%220.6%22%20opacity%3D%220.7%22%2F%3E%3Ccircle%20cx%3D%22308%22%20cy%3D%22320%22%20r%3D%220.4%22%20opacity%3D%220.5%22%2F%3E%3Ccircle%20cx%3D%22396%22%20cy%3D%22336%22%20r%3D%220.8%22%20opacity%3D%220.9%22%2F%3E%3Ccircle%20cx%3D%22476%22%20cy%3D%22312%22%20r%3D%220.5%22%20opacity%3D%220.6%22%2F%3E%3Ccircle%20cx%3D%2228%22%20cy%3D%22412%22%20r%3D%220.6%22%20opacity%3D%220.75%22%2F%3E%3Ccircle%20cx%3D%22116%22%20cy%3D%22388%22%20r%3D%220.4%22%20opacity%3D%220.45%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22428%22%20r%3D%220.7%22%20opacity%3D%220.8%22%2F%3E%3Ccircle%20cx%3D%22284%22%20cy%3D%22396%22%20r%3D%220.5%22%20opacity%3D%220.65%22%2F%3E%3Ccircle%20cx%3D%22364%22%20cy%3D%22420%22%20r%3D%220.6%22%20opacity%3D%220.7%22%2F%3E%3Ccircle%20cx%3D%22448%22%20cy%3D%22388%22%20r%3D%220.5%22%20opacity%3D%220.55%22%2F%3E%3Ccircle%20cx%3D%2280%22%20cy%3D%22468%22%20r%3D%220.6%22%20opacity%3D%220.85%22%2F%3E%3Ccircle%20cx%3D%22168%22%20cy%3D%22488%22%20r%3D%220.4%22%20opacity%3D%220.5%22%2F%3E%3Ccircle%20cx%3D%22256%22%20cy%3D%22452%22%20r%3D%220.8%22%20opacity%3D%220.95%22%2F%3E%3Ccircle%20cx%3D%22340%22%20cy%3D%22476%22%20r%3D%220.5%22%20opacity%3D%220.6%22%2F%3E%3Ccircle%20cx%3D%22424%22%20cy%3D%22448%22%20r%3D%220.6%22%20opacity%3D%220.75%22%2F%3E%3Ccircle%20cx%3D%22500%22%20cy%3D%22468%22%20r%3D%220.4%22%20opacity%3D%220.5%22%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%22%23ffe81f%22%3E%3Ccircle%20cx%3D%22132%22%20cy%3D%2264%22%20r%3D%220.9%22%20opacity%3D%220.35%22%2F%3E%3Ccircle%20cx%3D%22360%22%20cy%3D%22156%22%20r%3D%220.8%22%20opacity%3D%220.3%22%2F%3E%3Ccircle%20cx%3D%2272%22%20cy%3D%22296%22%20r%3D%220.7%22%20opacity%3D%220.28%22%2F%3E%3Ccircle%20cx%3D%22288%22%20cy%3D%2264%22%20r%3D%220.6%22%20opacity%3D%220.25%22%2F%3E%3Ccircle%20cx%3D%22412%22%20cy%3D%22380%22%20r%3D%220.9%22%20opacity%3D%220.32%22%2F%3E%3Ccircle%20cx%3D%22196%22%20cy%3D%22412%22%20r%3D%220.7%22%20opacity%3D%220.22%22%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%22%234bd5ee%22%3E%3Ccircle%20cx%3D%22240%22%20cy%3D%22120%22%20r%3D%220.7%22%20opacity%3D%220.25%22%2F%3E%3Ccircle%20cx%3D%2248%22%20cy%3D%22360%22%20r%3D%220.6%22%20opacity%3D%220.2%22%2F%3E%3Ccircle%20cx%3D%22468%22%20cy%3D%22180%22%20r%3D%220.8%22%20opacity%3D%220.28%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
   --font-heading: var(--font-orbitron), "Orbitron", system-ui, sans-serif;
   --font-sans: var(--font-pathway), var(--font-mont), "Pathway Gothic One", "Montserrat", system-ui,
@@ -11,178 +10,248 @@
     0 0 48px color-mix(in oklab, var(--accent) 18%, transparent);
   --sw-laser-glow: 0 0 16px color-mix(in oklab, var(--accent) 55%, transparent),
     0 0 32px color-mix(in oklab, var(--accent) 25%, transparent);
+  --sw-saber-edge: 0 0 14px var(--accent), 0 0 28px color-mix(in oklab, var(--accent) 40%, transparent);
 }
 
-/* Dense starfield (tiled SVG) + deep space */
+/* Doc background: calm space (FX are on .panel-cinema-bg inside the shell) */
 html[data-panel-theme="starWars"] {
   background-color: #030508 !important;
-  background-image: var(--sw-starfield), linear-gradient(180deg, #020306 0%, #050a14 45%, #030508 100%) !important;
-  background-size: 512px 512px, 100% 100% !important;
-  background-repeat: repeat, no-repeat !important;
-  background-attachment: fixed, fixed !important;
+  background-image: linear-gradient(180deg, #020306 0%, #050a14 50%, #030508 100%) !important;
 }
 
-/* Twinkling overlay */
+html[data-panel-theme="starWars"]::before,
 html[data-panel-theme="starWars"]::after {
-  content: "";
+  display: none !important;
+}
+
+html[data-panel-theme="starWars"] body::before,
+html[data-panel-theme="starWars"] body::after {
+  display: none !important;
+}
+
+/* --- Panel cinema backdrop (stars, hyperspace, lasers) --- */
+
+html[data-panel-theme="starWars"] .panel-root {
+  isolation: isolate;
+}
+
+html[data-panel-theme="starWars"] .panel-cinema-bg {
   position: fixed;
   inset: 0;
+  z-index: 0;
   pointer-events: none;
-  z-index: -11;
-  opacity: 0.55;
-  background-image: var(--sw-starfield);
-  background-size: 512px 512px;
-  background-repeat: repeat;
-  background-attachment: fixed;
-  animation: sw-star-twinkle 6s ease-in-out infinite alternate;
-  mix-blend-mode: screen;
+  overflow: hidden;
+}
+
+html[data-panel-theme="starWars"] .panel-cinema-bg > span {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* Hyperspace streaks */
+html[data-panel-theme="starWars"] .panel-cinema-bg__hyperspace {
+  background:
+    repeating-conic-gradient(
+      from 0deg at 50% 45%,
+      transparent 0deg 7deg,
+      color-mix(in oklab, var(--accent) 14%, transparent) 7deg 7.35deg,
+      transparent 7.35deg 14deg
+    ),
+    radial-gradient(ellipse 90% 70% at 50% 40%, color-mix(in oklab, var(--sw-crawl-blue) 8%, transparent), transparent 62%);
+  opacity: 0.22;
+  animation: sw-hyperspace-drift 90s linear infinite;
+}
+
+@keyframes sw-hyperspace-drift {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Starfield + twinkle */
+html[data-panel-theme="starWars"] .panel-cinema-bg__stars {
+  background-image: var(--sw-starfield), linear-gradient(180deg, transparent 0%, rgba(3, 5, 8, 0.35) 100%);
+  background-size: 512px 512px, 100% 100%;
+  background-repeat: repeat, no-repeat;
+  animation: sw-star-twinkle 5s ease-in-out infinite alternate;
 }
 
 @keyframes sw-star-twinkle {
   0% {
-    opacity: 0.35;
-    filter: brightness(0.85);
+    opacity: 0.55;
+    filter: brightness(0.9);
   }
   100% {
-    opacity: 0.7;
-    filter: brightness(1.15);
+    opacity: 0.95;
+    filter: brightness(1.12);
   }
 }
 
-/* Atmospheric haze (under lasers) */
-html[data-panel-theme="starWars"]::before {
-  background:
-    radial-gradient(ellipse 55% 40% at 8% 20%, color-mix(in oklab, var(--accent) 18%, transparent) 0%, transparent 50%),
-    radial-gradient(ellipse 50% 45% at 95% 35%, color-mix(in oklab, var(--sw-crawl-blue) 12%, transparent) 0%, transparent 52%),
-    radial-gradient(ellipse 60% 50% at 50% 100%, color-mix(in oklab, var(--accent-ambient) 12%, transparent) 0%, transparent 55%) !important;
-  filter: blur(56px);
-  opacity: 0.32;
-  animation: none;
-}
-
-/* Lightsaber / blaster laser sweeps */
-html[data-panel-theme="starWars"] body::before {
-  content: "";
-  position: fixed;
-  inset: -30%;
-  pointer-events: none;
-  z-index: -7;
+/* Lightsaber / blaster sweeps across the viewport */
+html[data-panel-theme="starWars"] .panel-cinema-bg__lasers {
+  inset: -25%;
   background:
     linear-gradient(
       90deg,
       transparent 0%,
       transparent 46%,
       color-mix(in oklab, var(--accent) 0%, transparent) 48%,
-      color-mix(in oklab, var(--accent) 55%, transparent) 49.6%,
+      color-mix(in oklab, var(--accent) 70%, transparent) 49.6%,
       #fff9c4 50%,
-      color-mix(in oklab, var(--accent) 55%, transparent) 50.4%,
+      color-mix(in oklab, var(--accent) 70%, transparent) 50.4%,
       color-mix(in oklab, var(--accent) 0%, transparent) 52%,
       transparent 54%,
       transparent 100%
     ),
     linear-gradient(
-      -72deg,
+      -68deg,
       transparent 0%,
       transparent 42%,
       color-mix(in oklab, var(--sw-crawl-blue) 0%, transparent) 48%,
-      color-mix(in oklab, var(--sw-crawl-blue) 40%, transparent) 50%,
+      color-mix(in oklab, var(--sw-crawl-blue) 55%, transparent) 50%,
       color-mix(in oklab, var(--sw-crawl-blue) 0%, transparent) 52%,
       transparent 58%,
       transparent 100%
     ),
     linear-gradient(
-      18deg,
+      22deg,
       transparent 0%,
-      transparent 62%,
+      transparent 60%,
       color-mix(in oklab, var(--accent-ambient) 0%, transparent) 66%,
-      color-mix(in oklab, var(--accent-ambient) 35%, transparent) 68%,
+      color-mix(in oklab, var(--accent-ambient) 45%, transparent) 68%,
       color-mix(in oklab, var(--accent-ambient) 0%, transparent) 70%,
       transparent 74%,
       transparent 100%
     );
-  background-size: 220% 2px, 180% 1px, 200% 1px;
-  background-position: -120% 38%, 140% 62%, -80% 78%;
+  background-size: 240% 3px, 200% 2px, 220% 2px;
+  background-position: -130% 32%, 150% 58%, -90% 74%;
   background-repeat: no-repeat;
-  opacity: 0.55;
-  animation: sw-laser-sweep-a 14s ease-in-out infinite, sw-laser-sweep-b 19s ease-in-out 4s infinite,
-    sw-laser-sweep-c 23s ease-in-out 9s infinite;
+  opacity: 0;
+  animation: sw-laser-sweep-a 11s ease-in-out infinite, sw-laser-sweep-b 16s ease-in-out 3.5s infinite,
+    sw-laser-sweep-c 20s ease-in-out 8s infinite;
 }
 
 @keyframes sw-laser-sweep-a {
   0%,
-  72%,
+  70%,
   100% {
-    background-position: -120% 38%, 140% 62%, -80% 78%;
-    opacity: 0;
-  }
-  8% {
-    opacity: 0.5;
-  }
-  18% {
-    background-position: 120% 38%, 140% 62%, -80% 78%;
-    opacity: 0.35;
-  }
-  28% {
-    opacity: 0;
-  }
-}
-
-@keyframes sw-laser-sweep-b {
-  0%,
-  68%,
-  100% {
-    background-position: -120% 38%, 140% 62%, -80% 78%;
+    background-position: -130% 32%, 150% 58%, -90% 74%;
     opacity: 0;
   }
   6% {
-    opacity: 0.4;
+    opacity: 0.65;
   }
   16% {
-    background-position: -120% 38%, -140% 62%, -80% 78%;
-    opacity: 0.3;
+    background-position: 130% 32%, 150% 58%, -90% 74%;
+    opacity: 0.45;
   }
   26% {
     opacity: 0;
   }
 }
 
+@keyframes sw-laser-sweep-b {
+  0%,
+  65%,
+  100% {
+    background-position: -130% 32%, 150% 58%, -90% 74%;
+    opacity: 0;
+  }
+  5% {
+    opacity: 0.5;
+  }
+  14% {
+    background-position: -130% 32%, -150% 58%, -90% 74%;
+    opacity: 0.38;
+  }
+  24% {
+    opacity: 0;
+  }
+}
+
 @keyframes sw-laser-sweep-c {
   0%,
-  75%,
+  72%,
   100% {
-    background-position: -120% 38%, 140% 62%, -80% 78%;
+    background-position: -130% 32%, 150% 58%, -90% 74%;
     opacity: 0;
   }
-  10% {
-    opacity: 0.35;
+  8% {
+    opacity: 0.42;
   }
-  22% {
-    background-position: -120% 38%, 140% 62%, 130% 78%;
-    opacity: 0.25;
+  18% {
+    background-position: -130% 32%, 150% 58%, 140% 74%;
+    opacity: 0.3;
   }
-  32% {
+  28% {
     opacity: 0;
   }
 }
 
-html[data-panel-theme="starWars"] body::after {
-  background:
-    radial-gradient(ellipse 70% 45% at 50% 0%, color-mix(in oklab, var(--accent) 14%, transparent) 0%, transparent 55%),
-    radial-gradient(circle at 85% 80%, color-mix(in oklab, var(--accent-ambient) 10%, transparent) 0%, transparent 50%),
-    radial-gradient(ellipse 40% 30% at 0% 50%, color-mix(in oklab, var(--sw-crawl-blue) 6%, transparent) 0%, transparent 50%) !important;
-  filter: blur(48px);
-  opacity: 0.28;
+@media (prefers-reduced-motion: reduce) {
+  html[data-panel-theme="starWars"] .panel-cinema-bg__hyperspace,
+  html[data-panel-theme="starWars"] .panel-cinema-bg__stars,
+  html[data-panel-theme="starWars"] .panel-cinema-bg__lasers {
+    animation: none !important;
+  }
+
+  html[data-panel-theme="starWars"] .panel-cinema-bg__stars {
+    opacity: 0.75;
+  }
 }
 
-/* Typography — crawl / HUD feel */
-html[data-panel-theme="starWars"] h1,
-html[data-panel-theme="starWars"] h2,
-html[data-panel-theme="starWars"] h3,
-html[data-panel-theme="starWars"] .font-heading {
-  font-family: var(--font-heading);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  text-shadow: var(--sw-glow);
+/* Hide cinema layers when theme is not Star Wars */
+.panel-cinema-bg {
+  display: none;
+}
+
+html[data-panel-theme="starWars"] .panel-cinema-bg {
+  display: block;
+}
+
+/* --- Panel chrome (navbar, sidebar, content, surfaces) --- */
+
+html[data-panel-theme="starWars"] .panel-root {
+  font-family: var(--font-sans);
+}
+
+html[data-panel-theme="starWars"] .panel-navbar {
+  background: color-mix(in oklab, var(--bg) 88%, transparent) !important;
+  border-bottom-color: color-mix(in oklab, var(--accent) 35%, transparent) !important;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.45),
+    0 0 40px color-mix(in oklab, var(--accent) 12%, transparent) !important;
+}
+
+html[data-panel-theme="starWars"] .panel-navbar::before {
+  opacity: 0.45;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--accent) 22%, transparent) 0%,
+    color-mix(in oklab, var(--sw-crawl-blue) 10%, transparent) 40%,
+    transparent 72%
+  );
+}
+
+html[data-panel-theme="starWars"] .panel-navbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent) 20%,
+    #fff9c4 50%,
+    var(--accent) 80%,
+    transparent
+  );
+  opacity: 0.7;
+  box-shadow: var(--sw-saber-edge);
+  pointer-events: none;
 }
 
 html[data-panel-theme="starWars"] .panel-navbar-brand {
@@ -192,56 +261,77 @@ html[data-panel-theme="starWars"] .panel-navbar-brand {
   text-shadow: var(--sw-glow);
 }
 
-html[data-panel-theme="starWars"] code,
-html[data-panel-theme="starWars"] pre,
-html[data-panel-theme="starWars"] .font-mono {
+html[data-panel-theme="starWars"] .panel-navbar-brand span:first-child {
+  color: var(--accent) !important;
+}
+
+html[data-panel-theme="starWars"] .panel-doc-sidebar {
+  background: color-mix(in oklab, var(--bg-elevated) 72%, transparent) !important;
+  border-color: color-mix(in oklab, var(--accent) 18%, transparent) !important;
+  box-shadow: inset -1px 0 0 color-mix(in oklab, var(--accent) 8%, transparent);
+}
+
+html[data-panel-theme="starWars"] .panel-menu-link--active {
+  border-left: 3px solid var(--accent);
+  box-shadow:
+    var(--sw-saber-edge),
+    inset 0 0 24px color-mix(in oklab, var(--accent) 8%, transparent);
+}
+
+html[data-panel-theme="starWars"] .panel-main::before {
+  opacity: 0.35;
+  background:
+    radial-gradient(ellipse 55% 40% at 12% 30%, color-mix(in oklab, var(--accent) 10%, transparent), transparent 55%),
+    radial-gradient(ellipse 50% 45% at 92% 60%, color-mix(in oklab, var(--sw-crawl-blue) 8%, transparent), transparent 52%);
+}
+
+html[data-panel-theme="starWars"] .panel-surface {
+  border-color: color-mix(in oklab, var(--accent) 22%, var(--border)) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--accent) 6%, transparent),
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    0 0 24px color-mix(in oklab, var(--accent) 6%, transparent);
+}
+
+html[data-panel-theme="starWars"] .panel-surface::before {
+  opacity: 0.85;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    color-mix(in oklab, var(--accent) 12%, transparent) 45%,
+    transparent 55%
+  );
+}
+
+html[data-panel-theme="starWars"] .panel-root h1,
+html[data-panel-theme="starWars"] .panel-root h2,
+html[data-panel-theme="starWars"] .panel-root h3,
+html[data-panel-theme="starWars"] .panel-root .font-heading {
+  font-family: var(--font-heading);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: var(--sw-glow);
+}
+
+html[data-panel-theme="starWars"] .panel-root code,
+html[data-panel-theme="starWars"] .panel-root pre,
+html[data-panel-theme="starWars"] .panel-root .font-mono {
   letter-spacing: 0.04em;
   text-shadow: 0 0 8px color-mix(in oklab, var(--sw-crawl-blue) 25%, transparent);
 }
 
-/* Lightsaber glow on primary controls */
-html[data-panel-theme="starWars"] .panel-btn-primary {
+html[data-panel-theme="starWars"] .panel-root .panel-btn-primary {
   box-shadow: var(--sw-laser-glow);
   font-family: var(--font-heading) !important;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-html[data-panel-theme="starWars"] :focus-visible {
+html[data-panel-theme="starWars"] .panel-root .panel-btn-primary::before {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+}
+
+html[data-panel-theme="starWars"] .panel-root :focus-visible {
   outline-color: var(--accent);
   box-shadow: var(--sw-laser-glow);
-}
-
-html[data-panel-theme="starWars"] [class*="border-[var(--accent)]"],
-html[data-panel-theme="starWars"] [class*="border-[var(--border-strong)]"] {
-  box-shadow: 0 0 12px color-mix(in oklab, var(--accent) 12%, transparent);
-}
-
-/* Subscription page (color preset starWars) */
-.root[data-color-preset="starWars"]:not([data-has-custom-bg="true"]):not([data-theme="light"]) {
-  background-color: #030508;
-  background-image: var(--sw-starfield), linear-gradient(180deg, #020306 0%, #050a14 45%, #030508 100%);
-  background-size: 512px 512px, 100% 100%;
-  background-repeat: repeat, no-repeat;
-  background-attachment: fixed, fixed;
-  font-family: var(--font-pathway), var(--font-mont), "Pathway Gothic One", sans-serif;
-}
-
-.root[data-color-preset="starWars"]:not([data-has-custom-bg="true"]):not([data-theme="light"]) .animatedBg {
-  display: block;
-  opacity: 0.45;
-  background-image: var(--sw-starfield);
-  background-size: 512px 512px;
-  background-repeat: repeat;
-  animation: sw-star-twinkle 6s ease-in-out infinite alternate;
-  mix-blend-mode: screen;
-}
-
-.root[data-color-preset="starWars"] h1,
-.root[data-color-preset="starWars"] h2,
-.root[data-color-preset="starWars"] h3 {
-  font-family: var(--font-orbitron), "Orbitron", system-ui, sans-serif;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  text-shadow: var(--sw-glow);
 }
