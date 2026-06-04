@@ -93,22 +93,29 @@ export function InboundXrayCoreEditor({
       {validationError ? <AlertBanner type="warning" title={validationError} /> : null}
       {strippedHint ? <p className="text-xs text-[var(--fg-muted)]">{strippedHint}</p> : null}
 
-      <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle)]">
+      <div className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle)]">
         {loading && !value.trim() ? (
           <div className="grid min-h-32 place-items-center p-6">
             <Spinner size={28} />
           </div>
         ) : (
-          <MonacoJsonEditor
-            path="inbound-xray-core.json"
-            value={value}
-            onChange={(v) => {
-              setValidationError(null);
-              onChange(v);
-            }}
-            height="min(60dvh, 28rem)"
-            schemaBundle={schemaBundle}
-          />
+          <>
+            <MonacoJsonEditor
+              path="inbound-xray-core.json"
+              value={value}
+              onChange={(v) => {
+                setValidationError(null);
+                onChange(v);
+              }}
+              height="min(60dvh, 28rem)"
+              schemaBundle={schemaBundle}
+            />
+            {loading ? (
+              <div className="absolute inset-0 grid place-items-center bg-[var(--bg)]/60 backdrop-blur-[1px]">
+                <Spinner size={28} />
+              </div>
+            ) : null}
+          </>
         )}
       </div>
 

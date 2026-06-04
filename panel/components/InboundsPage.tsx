@@ -560,6 +560,8 @@ export function InboundsPage() {
   const coreConfigDraftRef = useRef(coreConfigDraft);
   coreConfigDraftRef.current = coreConfigDraft;
   const [coreConfigDraftDirty, setCoreConfigDraftDirty] = useState(false);
+  /** Bumped to refetch Xray core preview (e.g. "Reload from form" while draft is not dirty). */
+  const [coreConfigPreviewNonce, setCoreConfigPreviewNonce] = useState(0);
   const [xrayPreviewText, setXrayPreviewText] = useState<string | null>(null);
   const [xrayPreviewLoading, setXrayPreviewLoading] = useState(false);
   const [xrayPreviewError, setXrayPreviewError] = useState<string | null>(null);
@@ -683,6 +685,7 @@ export function InboundsPage() {
     setCoreConfigDraftDirty(false);
     setCoreConfigDraft("");
     setXrayPreviewText(null);
+    setCoreConfigPreviewNonce(0);
   }, []);
 
   const openAdd = () => {
@@ -1255,12 +1258,12 @@ export function InboundsPage() {
     t,
     form.protocol,
     coreConfigDraftDirty,
+    coreConfigPreviewNonce,
   ]);
 
   const reloadCoreConfigFromForm = useCallback(() => {
     setCoreConfigDraftDirty(false);
-    setCoreConfigDraft("");
-    setXrayPreviewText(null);
+    setCoreConfigPreviewNonce((n) => n + 1);
   }, []);
 
   const submitModal = async () => {
