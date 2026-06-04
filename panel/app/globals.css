@@ -169,6 +169,30 @@
   --accent-ambient: #3ad3ba;
 }
 
+/* Star Wars — deep space, gold lightsaber primary, muted imperial red ambient */
+:root[data-panel-theme="starWars"] {
+  --ifm-color-primary: #ffe81f;
+  --ifm-color-secondary: #e23d3d;
+  --ifm-link-color: #ffe81f;
+  --ifm-link-hover-color: #fff3a0;
+  --ifm-heading-color: #f5f0e6;
+  --ifm-color-content: #e8e4dc;
+  --ifm-color-content-secondary: rgba(232, 228, 220, 0.62);
+  --ifm-card-background-color: rgba(12, 16, 28, 0.82);
+  --bg: #030508;
+  --bg-elevated: #0a0e18;
+  --surface: rgba(18, 24, 42, 0.55);
+  --surface-strong: rgba(18, 24, 42, 0.88);
+  --border: rgba(255, 232, 31, 0.1);
+  --border-strong: rgba(255, 232, 31, 0.28);
+  --fg: #e8e4dc;
+  --fg-muted: #9aa3b8;
+  --fg-subtle: rgba(232, 228, 220, 0.5);
+  --code-bg: rgba(8, 12, 22, 0.94);
+  --accent: #ffe81f;
+  --accent-ambient: #c41e3a;
+}
+
 /* ---------------------------------------------------------------------------
    Login page — vortex / funnel backdrop (uses --accent / --accent-ambient);
    form sits in the center “throat”
@@ -411,6 +435,26 @@ html[data-panel-theme="xuiClassic"] {
   background-attachment: fixed !important;
 }
 
+html[data-panel-theme="starWars"] {
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1px 1px at 78% 42%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(1.5px 1.5px at 35% 72%, rgba(255, 232, 31, 0.25), transparent),
+    radial-gradient(1px 1px at 92% 8%, rgba(255, 255, 255, 0.3), transparent),
+    radial-gradient(ellipse 90% 60% at 50% 0%, color-mix(in oklab, var(--accent) 8%, transparent), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, color-mix(in oklab, var(--accent-ambient) 10%, transparent), transparent 50%),
+    linear-gradient(180deg, #030508 0%, #060a14 100%) !important;
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 100% !important;
+  background-attachment: fixed !important;
+}
+
 /* Fixed haze (under content) — default theme corner treatment */
 html:not([data-panel-theme])::before {
   content: "";
@@ -501,6 +545,20 @@ html[data-panel-theme="xuiClassic"]::before {
     radial-gradient(ellipse 48% 42% at 55% 92%, color-mix(in oklab, var(--accent) 8%, transparent) 0%, transparent 52%);
   filter: blur(52px);
   opacity: 0.26;
+}
+
+html[data-panel-theme="starWars"]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -10;
+  background:
+    radial-gradient(ellipse 55% 40% at 8% 20%, color-mix(in oklab, var(--accent) 22%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 45% at 95% 35%, color-mix(in oklab, var(--accent-ambient) 14%, transparent) 0%, transparent 52%),
+    radial-gradient(ellipse 60% 50% at 50% 100%, color-mix(in oklab, var(--accent) 10%, transparent) 0%, transparent 55%);
+  filter: blur(56px);
+  opacity: 0.3;
 }
 
 body {
@@ -640,6 +698,27 @@ html[data-panel-theme="xuiClassic"] body::after {
     );
   filter: blur(44px);
   opacity: 0.22;
+}
+
+html[data-panel-theme="starWars"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -5;
+  background:
+    radial-gradient(
+      ellipse 70% 45% at 50% 0%,
+      color-mix(in oklab, var(--accent) 12%, transparent) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 85% 80%,
+      color-mix(in oklab, var(--accent-ambient) 8%, transparent) 0%,
+      transparent 50%
+    );
+  filter: blur(48px);
+  opacity: 0.26;
 }
 
 a {

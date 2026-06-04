@@ -137,6 +137,23 @@
   --sub-accent-ambient-soft: color-mix(in oklab, var(--sub-accent-ambient) 8%, transparent);
 }
 
+.root[data-color-preset="starWars"] {
+  --sub-bg: #030508;
+  --sub-bg-elevated: #0a0e18;
+  --sub-fg: #e8e4dc;
+  --sub-fg-strong: #fff8e7;
+  --sub-fg-muted: #9aa3b8;
+  --sub-fg-subtle: rgba(232, 228, 220, 0.5);
+  --sub-border: rgba(255, 232, 31, 0.12);
+  --sub-border-soft: rgba(255, 232, 31, 0.06);
+  --sub-surface: rgba(18, 24, 42, 0.55);
+  --sub-surface-strong: rgba(18, 24, 42, 0.88);
+  --sub-accent: #ffe81f;
+  --sub-accent-ambient: #c41e3a;
+  --sub-accent-soft: color-mix(in oklab, var(--sub-accent) 14%, transparent);
+  --sub-accent-ambient-soft: color-mix(in oklab, var(--sub-accent-ambient) 8%, transparent);
+}
+
 /* Light theme override — activated via data-theme="light" on .root
  * Placed after color-preset rules so it wins same-specificity; replaces dark patterns. */
 .root[data-theme="light"] {

@@ -180,7 +180,10 @@ export function inboundCoreConfigMonacoSchemas(
           listen: {
             description: "Bind address (string or JSON string)",
           },
-          port: { type: "integer", minimum: 1, maximum: 65535 },
+          port: {
+            type: "integer",
+            description: "Listener port (1–65535). Avoid min/max in schema — Monaco would suggest every value in range.",
+          },
           protocol: { type: "string" },
           tag: { type: "string" },
           settings: coreSettingsSchema(protocol, t),

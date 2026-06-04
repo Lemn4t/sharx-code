@@ -955,6 +955,7 @@ ember = "Ember"
 boreal = "Boreal"
 web = "SharX Web"
 xuiClassic = "3X-UI Classic"
+starWars = "Star Wars"
 
 [pages.settings.subscriptionHeaders]
 title = "Subscription Headers"

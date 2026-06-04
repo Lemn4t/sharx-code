@@ -48,4 +48,17 @@ export function panelTimestampToMs(t: number | undefined | null): number | undef
   return t;
 }
 
+/**
+ * Normalize `datetime-local` input: after date-only selection, browsers often leave time empty.
+ * Appends `T00:00` (v1.4.9 behavior) instead of leaving partial values.
+ */
+export function normalizeDatetimeLocalInput(raw: string): string {
+  const v = raw.trim();
+  if (!v) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v}T00:00`;
+  if (/^\d{4}-\d{2}-\d{2}T$/.test(v)) return `${v}00:00`;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(v)) return `${v}:00`;
+  return v;
+}
+
 export { ONE_GB };

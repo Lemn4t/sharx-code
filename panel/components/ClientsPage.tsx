@@ -39,7 +39,12 @@ import { useTranslation } from "react-i18next";
 import { getJson, postJson } from "@/lib/api";
 import { usePanelWebSocket } from "@/lib/panelWebSocket";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
-import { panelTimestampToMs, sizeFormat, speedMbpsFormat } from "@/lib/format";
+import {
+  normalizeDatetimeLocalInput,
+  panelTimestampToMs,
+  sizeFormat,
+  speedMbpsFormat,
+} from "@/lib/format";
 import { panel } from "@/lib/paths";
 import { getUiPref, setUiPref } from "@/lib/uiPrefs";
 import { CompareModeFilterField, type CompareOp } from "@/components/CompareModeFilterField";
@@ -1933,7 +1938,12 @@ function ClientUnifiedCard({
                 id={id("expiry")}
                 type="datetime-local"
                 value={form.expiryLocal}
-                onChange={(e) => setForm((f) => ({ ...f, expiryLocal: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    expiryLocal: normalizeDatetimeLocalInput(e.target.value),
+                  }))
+                }
               />
               <p className="mt-1 text-xs text-[var(--fg-subtle)]">
                 {t("pages.clients.expiryTimeHint")}

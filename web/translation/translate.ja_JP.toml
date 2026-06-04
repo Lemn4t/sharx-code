@@ -1087,6 +1087,7 @@ ipLimitExcessPolicyDesc = "Which connections to target when a client exceeds the
   boreal = "Boreal"
   web = "SharX Web"
   xuiClassic = "3X-UI Classic"
+starWars = "Star Wars"
 
   [pages.settings.subscriptionHeaders]
   title = "Subscription Headers"

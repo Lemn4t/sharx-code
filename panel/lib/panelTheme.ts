@@ -13,6 +13,8 @@ export const PANEL_THEME_IDS = [
   "boreal",
   /** 3x-ui dark “Classic” palette (`--color-primary-100`, `--dark-color-*` in custom.min.css) */
   "xuiClassic",
+  /** Deep space + gold / lightsaber accents */
+  "starWars",
 ] as const;
 
 export type PanelThemeId = (typeof PANEL_THEME_IDS)[number];
@@ -28,6 +30,7 @@ const META_THEME: Record<PanelThemeId, string> = {
   /** SharX WEB marketing site — globals.css :root[data-theme="dark"] + system palette */
   web: "#05060a",
   xuiClassic: "#0a1222",
+  starWars: "#030508",
 };
 
 function isPanelThemeId(s: string | null | undefined): s is PanelThemeId {

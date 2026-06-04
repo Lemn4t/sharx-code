@@ -11,6 +11,7 @@ export const SUB_PAGE_COLOR_PRESET_IDS = [
   "ember",
   "boreal",
   "xuiClassic",
+  "starWars",
 ] as const;
 
 export type SubPageColorPresetId = (typeof SUB_PAGE_COLOR_PRESET_IDS)[number];
@@ -25,6 +26,7 @@ export const subPageColorPresetSchema = z.enum([
   "ember",
   "boreal",
   "xuiClassic",
+  "starWars",
 ]);
 
 export function resolveSubPageColorPreset(

@@ -1139,6 +1139,7 @@ remarkModelDragHint = "Перетащите, чтобы упорядочить"
   boreal = "Северное сияние"
   web = "SharX Web"
   xuiClassic = "Классика 3X-UI"
+  starWars = "Star Wars"
 
 [pages.xray]
 title = "Настройки Xray"

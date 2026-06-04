@@ -557,6 +557,8 @@ export function InboundsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [inboundModalView, setInboundModalView] = useState<"form" | "preview">("form");
   const [coreConfigDraft, setCoreConfigDraft] = useState("");
+  const coreConfigDraftRef = useRef(coreConfigDraft);
+  coreConfigDraftRef.current = coreConfigDraft;
   const [coreConfigDraftDirty, setCoreConfigDraftDirty] = useState(false);
   const [xrayPreviewText, setXrayPreviewText] = useState<string | null>(null);
   const [xrayPreviewLoading, setXrayPreviewLoading] = useState(false);
@@ -1029,9 +1031,9 @@ export function InboundsPage() {
     let coreTag: string | undefined;
     let coreFormPatch: Partial<ReturnType<typeof parseFirstClientFromSettings>> = {};
 
-    if (useCoreConfigDraftOnSubmit && !isTelemt && coreConfigDraft.trim()) {
+    if (useCoreConfigDraftOnSubmit && !isTelemt && coreConfigDraftRef.current.trim()) {
       const coreRt = roundTripInboundCoreConfig(
-        coreConfigDraft,
+        coreConfigDraftRef.current,
         form.protocol,
         baselineSettings,
       );
@@ -1170,7 +1172,6 @@ export function InboundsPage() {
     form,
     nodeBindings,
     preserveTraffic,
-    coreConfigDraft,
     useCoreConfigDraftOnSubmit,
     t,
   ]);
@@ -1182,6 +1183,9 @@ export function InboundsPage() {
 
   useEffect(() => {
     if (!modalOpen || inboundModalView !== "preview") {
+      return;
+    }
+    if (coreConfigDraftDirty) {
       return;
     }
     if (!inboundApiPayloadPreview.ok) {
