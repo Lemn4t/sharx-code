@@ -31,6 +31,13 @@ import (
 // NodeService provides business logic for managing nodes in multi-node mode.
 type NodeService struct{}
 
+const workerConfigRecoverMinInterval = 3 * time.Minute
+
+var (
+	workerConfigRecoverMu sync.Mutex
+	workerConfigRecoverAt = make(map[int]time.Time)
+)
+
 // ErrNodeNeedsReregistration is returned when the node is online but JWT auth to the node API fails.
 type ErrNodeNeedsReregistration struct {
 	NodeName string
@@ -693,8 +700,67 @@ func (s *NodeService) CheckNodeHealth(node *model.Node) error {
 	if fresh, gErr := s.GetNode(node.Id); gErr == nil && fresh.Enable {
 		_ = s.RefreshNodeXrayStateFromWorker(fresh)
 		_ = s.RefreshNodeTelemtStateFromWorker(fresh)
+		s.MaybePushWorkerConfigIfCoresDown(fresh)
 	}
 	return nil
+}
+
+// MaybePushWorkerConfigIfCoresDown pushes full apply-config when the worker is reachable but Xray or Telemt is down.
+// Covers restarts/updates where startup pull-xray-config failed (401, panel not ready) and no inbound change triggered apply.
+func (s *NodeService) MaybePushWorkerConfigIfCoresDown(node *model.Node) {
+	if node == nil || !node.Enable || node.Status != "online" {
+		return
+	}
+	workerConfigRecoverMu.Lock()
+	if t, ok := workerConfigRecoverAt[node.Id]; ok && time.Since(t) < workerConfigRecoverMinInterval {
+		workerConfigRecoverMu.Unlock()
+		return
+	}
+	workerConfigRecoverAt[node.Id] = time.Now()
+	workerConfigRecoverMu.Unlock()
+
+	health, err := s.GetNodePublicHealth(node)
+	if err != nil {
+		logger.Debugf("[Node: %s] Worker config recover: health: %v", node.Name, err)
+		return
+	}
+	inbounds, err := s.GetInboundsForNode(node.Id)
+	if err != nil || len(inbounds) == 0 {
+		return
+	}
+	needsTelemt := false
+	for _, ib := range inbounds {
+		if ib != nil && model.NormalizeProtocol(ib.Protocol) == model.Telemt {
+			needsTelemt = true
+			break
+		}
+	}
+	telemtOK := health.TelemtRunning || health.TelemtCount > 0
+	if health.XrayRunning && (!needsTelemt || telemtOK) {
+		return
+	}
+
+	n := node
+	go func() {
+		xs := NewXrayService()
+		cfgJSON, coreH, berr := xs.BuildWorkerXrayConfigForNodeWithMeta(n)
+		if berr != nil {
+			logger.Warningf("[Node: %s] Worker config recover: build xray: %v", n.Name, berr)
+			return
+		}
+		ibs, _ := xs.InboundsForWorkerNode(n)
+		telm, terr := BuildTelemtPayloadsForNode(n, ibs)
+		if terr != nil {
+			logger.Warningf("[Node: %s] Worker config recover: build telemt: %v", n.Name, terr)
+		}
+		meta := NewApplyWorkerConfigMeta(cfgJSON, coreH)
+		if err := s.ApplyConfigToNode(n, cfgJSON, &telm, meta); err != nil {
+			logger.Warningf("[Node: %s] Worker config recover: apply-config: %v", n.Name, err)
+			return
+		}
+		logger.Infof("[Node: %s] Worker config recover: pushed full config (xrayRunning=%v telemtRunning=%v telemtCount=%d)",
+			n.Name, health.XrayRunning, health.TelemtRunning, health.TelemtCount)
+	}()
 }
 
 // notifyNodeStatusChange sends a Telegram notification when a node's status changes.

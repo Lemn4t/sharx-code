@@ -74,6 +74,11 @@ func GetConfig() *NodeConfig {
 	}
 }
 
+// ClearNodeId removes a persisted panel node id (e.g. after pull 401 with stale id).
+func ClearNodeId() error {
+	return SetNodeId(0)
+}
+
 // SetNodeId persists the node id assigned by the panel.
 func SetNodeId(id int) error {
 	configMu.Lock()

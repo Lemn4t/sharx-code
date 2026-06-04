@@ -17,16 +17,95 @@ import (
 	"github.com/konstpic/sharx-code/v2/util/pairing_outbound"
 )
 
+// startupPullDelays are waits before retrying pull-xray-config when Xray is not running yet.
+var startupPullDelays = []time.Duration{
+	0,
+	2 * time.Second,
+	5 * time.Second,
+	10 * time.Second,
+	30 * time.Second,
+}
+
+type pullOutcome struct {
+	applied              bool
+	statusCode           int
+	retryWithoutNodeID   bool
+}
+
 // TryPullAndApply requests the latest Xray JSON (and optional Telemt payloads) from the panel and applies if Xray is not running.
-// Requires PANEL_URL, matching nodeAddress (as registered on the panel), and the outbound HMAC key.
+// Retries with backoff on transient errors; clears stale nodeId and retries by address after HTTP 401.
 func TryPullAndApply(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.Manager, telemtMgr *telemt.Manager) {
+	for attempt, delay := range startupPullDelays {
+		if attempt > 0 {
+			time.Sleep(delay)
+		}
+		if mgr != nil && mgr.IsRunning() {
+			return
+		}
+		out := pullAndApplyOnce(panelURL, nodeAddress, hmacKey, false, mgr, telemtMgr)
+		if out.applied {
+			return
+		}
+		if out.retryWithoutNodeID {
+			if err := nodeConfig.ClearNodeId(); err != nil {
+				logger.Warningf("Config pull: clear stale node id: %v", err)
+			} else {
+				logger.Warningf("Config pull: cleared stale nodeId, retrying by nodeAddress only")
+			}
+			out = pullAndApplyOnce(panelURL, nodeAddress, hmacKey, true, mgr, telemtMgr)
+			if out.applied {
+				return
+			}
+		}
+		if mgr != nil && mgr.IsRunning() {
+			return
+		}
+		// Permanent client errors: no point retrying in this startup burst.
+		if out.statusCode == http.StatusUnauthorized || out.statusCode == http.StatusForbidden {
+			break
+		}
+	}
+}
+
+// StartBackgroundPull retries pull-xray-config until Xray is running or the worker stops trying.
+func StartBackgroundPull(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.Manager, telemtMgr *telemt.Manager) {
+	panelURL = strings.TrimSpace(panelURL)
+	nodeAddress = strings.TrimSpace(nodeAddress)
+	if panelURL == "" || nodeAddress == "" || mgr == nil {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		const maxTicks = 30 // ~30 minutes
+		for i := 0; i < maxTicks; i++ {
+			if mgr.IsRunning() {
+				return
+			}
+			<-ticker.C
+			if mgr.IsRunning() {
+				return
+			}
+			logger.Infof("Config pull: background retry (%d/%d), xray not running", i+1, maxTicks)
+			TryPullAndApply(panelURL, nodeAddress, hmacKey, mgr, telemtMgr)
+		}
+	}()
+}
+
+func pullAndApplyOnce(
+	panelURL, nodeAddress string,
+	hmacKey [32]byte,
+	omitNodeID bool,
+	mgr *xray.Manager,
+	telemtMgr *telemt.Manager,
+) pullOutcome {
 	panelURL = strings.TrimSpace(panelURL)
 	nodeAddress = strings.TrimSpace(nodeAddress)
 	if panelURL == "" || nodeAddress == "" {
-		return
+		return pullOutcome{}
 	}
 	if mgr == nil || mgr.IsRunning() {
-		return
+		return pullOutcome{applied: mgr != nil && mgr.IsRunning()}
 	}
 
 	type pullBody struct {
@@ -34,20 +113,22 @@ func TryPullAndApply(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.M
 		NodeId      int    `json:"nodeId,omitempty"`
 	}
 	reqBody := pullBody{NodeAddress: nodeAddress}
-	if cfg := nodeConfig.GetConfig(); cfg != nil && cfg.NodeId > 0 {
-		reqBody.NodeId = cfg.NodeId
+	if !omitNodeID {
+		if cfg := nodeConfig.GetConfig(); cfg != nil && cfg.NodeId > 0 {
+			reqBody.NodeId = cfg.NodeId
+		}
 	}
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
 		logger.Warningf("Config pull: marshal request: %v", err)
-		return
+		return pullOutcome{}
 	}
 
 	endpoint := strings.TrimRight(panelURL, "/") + "/panel/api/node/pull-xray-config"
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		logger.Warningf("Config pull: build request: %v", err)
-		return
+		return pullOutcome{}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Sharx-Signature", "v1="+pairing_outbound.SignBody(hmacKey, payload))
@@ -56,17 +137,22 @@ func TryPullAndApply(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.M
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Warningf("Config pull: request failed: %v", err)
-		return
+		return pullOutcome{}
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
 		logger.Warningf("Config pull: read body: %v", err)
-		return
+		return pullOutcome{}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		logger.Warningf("Config pull: panel HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-		return
+		bodyStr := strings.TrimSpace(string(body))
+		logger.Warningf("Config pull: panel HTTP %d: %s", resp.StatusCode, bodyStr)
+		out := pullOutcome{statusCode: resp.StatusCode}
+		if resp.StatusCode == http.StatusUnauthorized && reqBody.NodeId > 0 {
+			out.retryWithoutNodeID = true
+		}
+		return out
 	}
 
 	var envelope struct {
@@ -76,7 +162,7 @@ func TryPullAndApply(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.M
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		logger.Warningf("Config pull: invalid JSON: %v", err)
-		return
+		return pullOutcome{statusCode: resp.StatusCode}
 	}
 	if envelope.NodeId > 0 {
 		if err := nodeConfig.SetNodeId(envelope.NodeId); err != nil {
@@ -87,23 +173,31 @@ func TryPullAndApply(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.M
 	}
 	if len(envelope.Config) == 0 {
 		logger.Warningf("Config pull: empty config in response")
-		return
+		return pullOutcome{statusCode: resp.StatusCode}
 	}
 
 	if err := mgr.ApplyConfig(envelope.Config); err != nil {
 		logger.Warningf("Config pull: apply config: %v", err)
-		return
+		return pullOutcome{statusCode: resp.StatusCode}
 	}
 	logger.Infof("Config pull: applied Xray configuration from panel (%d bytes)", len(envelope.Config))
 
-	if telemtMgr != nil && len(envelope.Telemt) > 0 && string(envelope.Telemt) != "null" {
-		var payloads []telemt.Payload
-		if err := json.Unmarshal(envelope.Telemt, &payloads); err != nil {
-			logger.Warningf("Config pull: telemt parse: %v", err)
-		} else if err := telemtMgr.Apply(payloads); err != nil {
-			logger.Warningf("Config pull: telemt apply: %v", err)
-		} else {
-			logger.Infof("Config pull: applied Telemt payloads (%d)", len(payloads))
-		}
+	applyTelemtFromEnvelope(telemtMgr, envelope.Telemt)
+	return pullOutcome{applied: true, statusCode: resp.StatusCode}
+}
+
+func applyTelemtFromEnvelope(telemtMgr *telemt.Manager, raw json.RawMessage) {
+	if telemtMgr == nil || len(raw) == 0 || string(raw) == "null" {
+		return
 	}
+	var payloads []telemt.Payload
+	if err := json.Unmarshal(raw, &payloads); err != nil {
+		logger.Warningf("Config pull: telemt parse: %v", err)
+		return
+	}
+	if err := telemtMgr.Apply(payloads); err != nil {
+		logger.Warningf("Config pull: telemt apply: %v", err)
+		return
+	}
+	logger.Infof("Config pull: applied Telemt payloads (%d)", len(payloads))
 }

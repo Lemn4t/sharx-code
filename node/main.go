@@ -91,6 +91,7 @@ func main() {
 	telemtManager := telemt.NewManager()
 	if panelURL != "" {
 		configpull.TryPullAndApply(panelURL, nodeAddress, h, xrayManager, telemtManager)
+		configpull.StartBackgroundPull(panelURL, nodeAddress, h, xrayManager, telemtManager)
 	}
 	server := api.NewServer(port, xrayManager, telemtManager)
 	server.SetPairing(bundle)
