@@ -39,7 +39,7 @@ function DeliverySelect({
     <SelectNative
       value={value}
       onChange={(e) => onChange(e.target.value as ResponseHeaderDelivery)}
-      aria-label={t("subBuilder.responseRules.extraHeaderDelivery", {
+      aria-label={t("subBuilder.responseRules.deliveryLabel", {
         defaultValue: "Delivery method",
       })}
     >
@@ -280,7 +280,7 @@ function ParamRow({
         </div>
         <div className="flex min-w-[9rem] items-center gap-2">
           <span className="shrink-0 text-[10px] uppercase tracking-wide text-[var(--fg-subtle)]">
-            {t("subBuilder.responseRules.extraHeaderDelivery", { defaultValue: "Delivery" })}
+            {t("subBuilder.responseRules.deliveryLabel", { defaultValue: "Delivery" })}
           </span>
           <DeliverySelect value={delivery} onChange={onDeliveryChange} />
         </div>
