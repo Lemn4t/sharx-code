@@ -626,18 +626,29 @@ export type SubpageBlockKind = SubpageBlock["kind"];
 // Consolidated subscription settings (merged into v2 document)
 // ------------------------------------------------------------------------------------
 
+export const responseHeaderDeliverySchema = z
+  .enum(["header", "body", "both", "none"])
+  .default("header");
+export type ResponseHeaderDelivery = z.infer<typeof responseHeaderDeliverySchema>;
+
 export const responseRuleHeaderSchema = z.object({
   key: z.string(),
   value: z.string().default(""),
+  delivery: responseHeaderDeliverySchema.optional().default("header"),
 });
 export type ResponseRuleHeader = z.infer<typeof responseRuleHeaderSchema>;
 
 export const responseRulesSchema = z.object({
   profileTitle: z.string().default(""),
+  profileTitleDelivery: responseHeaderDeliverySchema.optional().default("header"),
   profileUpdateInterval: z.number().int().min(0).default(12),
+  profileUpdateIntervalDelivery: responseHeaderDeliverySchema.optional().default("header"),
   announce: z.string().default(""),
+  announceDelivery: responseHeaderDeliverySchema.optional().default("header"),
   supportUrl: z.string().default(""),
+  supportUrlDelivery: responseHeaderDeliverySchema.optional().default("header"),
   profileWebPageUrl: z.string().default(""),
+  profileWebPageUrlDelivery: responseHeaderDeliverySchema.optional().default("header"),
   /** When true, show Telegram MTProto (tg://) helper next to the installation guide when links include tg://proxy. */
   mtProtoEnabled: z.boolean().default(true),
   extraHeaders: z.array(responseRuleHeaderSchema).default([]),
@@ -697,6 +708,7 @@ export type RoutingProfile = z.infer<typeof routingProfileSchema>;
 
 export const routingSchema = z.object({
   profiles: z.array(routingProfileSchema).default([]),
+  delivery: responseHeaderDeliverySchema.optional().default("header"),
 });
 export type Routing = z.infer<typeof routingSchema>;
 
@@ -831,10 +843,15 @@ export function defaultV2Blocks(): SubpageBlock[] {
 export function defaultResponseRules(): ResponseRules {
   return {
     profileTitle: "",
+    profileTitleDelivery: "header",
     profileUpdateInterval: 12,
+    profileUpdateIntervalDelivery: "header",
     announce: "",
+    announceDelivery: "header",
     supportUrl: "",
+    supportUrlDelivery: "header",
     profileWebPageUrl: "",
+    profileWebPageUrlDelivery: "header",
     mtProtoEnabled: true,
     extraHeaders: [],
   };
@@ -858,7 +875,7 @@ export function defaultAppSettings(): AppSettings {
 }
 
 export function defaultRouting(): Routing {
-  return { profiles: [] };
+  return { profiles: [], delivery: "header" };
 }
 
 export function defaultAutorouting(): Autorouting {

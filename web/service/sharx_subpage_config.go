@@ -32,19 +32,60 @@ type SharxSubpageBlock struct {
 // SharxSubpageResponseRules represents HTTP response rules applied to
 // subscription responses (headers, announce, support URL etc.).
 type SharxSubpageResponseRules struct {
-	ProfileTitle          string                       `json:"profileTitle"`
-	ProfileUpdateInterval int                          `json:"profileUpdateInterval"`
-	Announce              string                       `json:"announce"`
-	SupportURL            string                       `json:"supportUrl"`
-	ProfileWebPageURL     string                       `json:"profileWebPageUrl"`
-	MtProtoEnabled        *bool                        `json:"mtProtoEnabled,omitempty"`
-	ExtraHeaders          []SharxSubpageResponseHeader `json:"extraHeaders"`
+	ProfileTitle                    string                       `json:"profileTitle"`
+	ProfileTitleDelivery            string                       `json:"profileTitleDelivery,omitempty"`
+	ProfileUpdateInterval           int                          `json:"profileUpdateInterval"`
+	ProfileUpdateIntervalDelivery   string                       `json:"profileUpdateIntervalDelivery,omitempty"`
+	Announce                        string                       `json:"announce"`
+	AnnounceDelivery                string                       `json:"announceDelivery,omitempty"`
+	SupportURL                      string                       `json:"supportUrl"`
+	SupportURLDelivery              string                       `json:"supportUrlDelivery,omitempty"`
+	ProfileWebPageURL               string                       `json:"profileWebPageUrl"`
+	ProfileWebPageURLDelivery       string                       `json:"profileWebPageUrlDelivery,omitempty"`
+	MtProtoEnabled                  *bool                        `json:"mtProtoEnabled,omitempty"`
+	ExtraHeaders                    []SharxSubpageResponseHeader `json:"extraHeaders"`
 }
 
-// SharxSubpageResponseHeader is a single extra HTTP header key/value.
+// Response header delivery targets (Happ docs: HTTP header and/or body comment).
+const (
+	ResponseHeaderDeliveryHeader = "header"
+	ResponseHeaderDeliveryBody   = "body"
+	ResponseHeaderDeliveryBoth   = "both"
+	ResponseHeaderDeliveryNone   = "none"
+)
+
+// SharxSubpageResponseHeader is an extra subscription meta parameter with an
+// optional delivery method (HTTP header, body comment, both, or disabled).
 type SharxSubpageResponseHeader struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+	Delivery string `json:"delivery,omitempty"` // header | body | both | none; empty => header
+}
+
+// NormalizeResponseHeaderDelivery returns a canonical delivery value.
+func NormalizeResponseHeaderDelivery(delivery string) string {
+	switch strings.ToLower(strings.TrimSpace(delivery)) {
+	case ResponseHeaderDeliveryBody:
+		return ResponseHeaderDeliveryBody
+	case ResponseHeaderDeliveryBoth:
+		return ResponseHeaderDeliveryBoth
+	case ResponseHeaderDeliveryNone:
+		return ResponseHeaderDeliveryNone
+	default:
+		return ResponseHeaderDeliveryHeader
+	}
+}
+
+// ResponseHeaderDeliversHTTP reports whether the parameter is sent as an HTTP header.
+func ResponseHeaderDeliversHTTP(delivery string) bool {
+	d := NormalizeResponseHeaderDelivery(delivery)
+	return d == ResponseHeaderDeliveryHeader || d == ResponseHeaderDeliveryBoth
+}
+
+// ResponseHeaderDeliversBody reports whether the parameter is sent as a subscription body comment.
+func ResponseHeaderDeliversBody(delivery string) bool {
+	d := NormalizeResponseHeaderDelivery(delivery)
+	return d == ResponseHeaderDeliveryBody || d == ResponseHeaderDeliveryBoth
 }
 
 // SharxSubpagePresetIcons contains external URLs used by clients that display
@@ -101,6 +142,7 @@ type SharxSubpageRoutingProfile struct {
 // SharxSubpageRouting groups declared routing profiles.
 type SharxSubpageRouting struct {
 	Profiles []SharxSubpageRoutingProfile `json:"profiles"`
+	Delivery string                       `json:"delivery,omitempty"` // header | body | both | none; empty => header
 }
 
 // SharxSubpageAutoroutingEntry is a single autoupdated routing profile.
@@ -272,6 +314,17 @@ func validateV2(raw string) error {
 		if cfg.ResponseRules.ProfileUpdateInterval < 0 {
 			return errors.New("responseRules.profileUpdateInterval must be >= 0")
 		}
+		for _, pair := range []struct{ path, val string }{
+			{"responseRules.profileTitleDelivery", cfg.ResponseRules.ProfileTitleDelivery},
+			{"responseRules.profileUpdateIntervalDelivery", cfg.ResponseRules.ProfileUpdateIntervalDelivery},
+			{"responseRules.announceDelivery", cfg.ResponseRules.AnnounceDelivery},
+			{"responseRules.supportUrlDelivery", cfg.ResponseRules.SupportURLDelivery},
+			{"responseRules.profileWebPageUrlDelivery", cfg.ResponseRules.ProfileWebPageURLDelivery},
+		} {
+			if err := validateResponseHeaderDelivery(pair.path, pair.val); err != nil {
+				return err
+			}
+		}
 		seenKeys := map[string]bool{}
 		for i, h := range cfg.ResponseRules.ExtraHeaders {
 			k := strings.TrimSpace(h.Key)
@@ -283,6 +336,14 @@ func validateV2(raw string) error {
 				return errors.New("responseRules.extraHeaders[" + itoa(i) + "].key is duplicated: " + k)
 			}
 			seenKeys[lk] = true
+			if err := validateResponseHeaderDelivery("responseRules.extraHeaders["+itoa(i)+"].delivery", h.Delivery); err != nil {
+				return err
+			}
+		}
+	}
+	if cfg.Routing != nil {
+		if err := validateResponseHeaderDelivery("routing.delivery", cfg.Routing.Delivery); err != nil {
+			return err
 		}
 	}
 	if cfg.JsonTemplates != nil {
@@ -366,4 +427,16 @@ func IsLegacyRemnaStyleConfig(raw string) bool {
 func hasSharxBranding(m map[string]json.RawMessage) bool {
 	_, ok := m["branding"]
 	return ok
+}
+
+func validateResponseHeaderDelivery(path, delivery string) error {
+	raw := strings.ToLower(strings.TrimSpace(delivery))
+	if raw == "" ||
+		raw == ResponseHeaderDeliveryHeader ||
+		raw == ResponseHeaderDeliveryBody ||
+		raw == ResponseHeaderDeliveryBoth ||
+		raw == ResponseHeaderDeliveryNone {
+		return nil
+	}
+	return errors.New(path + " is invalid: " + delivery)
 }

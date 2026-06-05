@@ -85,6 +85,16 @@ func DispatchByUA(c *gin.Context) (UAClient, UAResponseFormat) {
 
 // ContentTypeFor returns the best Content-Type hint for a response format.
 func ContentTypeFor(fmtt UAResponseFormat) string {
+	return ContentTypeForClient(UAUnknown, fmtt)
+}
+
+// ContentTypeForClient returns the Content-Type for a client/format pair.
+// Happ only applies subscription meta-headers (Hide-Settings, providerid, etc.)
+// when Content-Type is application/json — see happ.su dev-docs/app-management.
+func ContentTypeForClient(client UAClient, fmtt UAResponseFormat) string {
+	if client == UAHapp {
+		return "application/json; charset=utf-8"
+	}
 	switch fmtt {
 	case FormatSIP008, FormatXrayJSON:
 		return "application/json; charset=utf-8"

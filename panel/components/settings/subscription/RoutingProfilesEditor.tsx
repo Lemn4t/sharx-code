@@ -30,6 +30,7 @@ import {
 import {
   defaultRouting,
   genBlockId,
+  type ResponseHeaderDelivery,
   type RoutingProfile,
   type SharxSubpageConfigV2,
 } from "@/lib/sharxSubpageConfig";
@@ -648,8 +649,10 @@ export function RoutingProfilesEditor({ config, onChange }: Props) {
   const routing = config.routing ?? defaultRouting();
   const profiles: RoutingProfile[] = routing.profiles;
 
-  const setProfiles = (next: RoutingProfile[]) =>
-    onChange({ ...config, routing: { ...routing, profiles: next } });
+  const setRouting = (patch: Partial<typeof routing>) =>
+    onChange({ ...config, routing: { ...routing, ...patch } });
+
+  const setProfiles = (next: RoutingProfile[]) => setRouting({ profiles: next });
 
   const [expandedId, setExpandedId] = useState<string | null>(() => profiles[0]?.id ?? null);
 
@@ -684,6 +687,41 @@ export function RoutingProfilesEditor({ config, onChange }: Props) {
                   "Edit routing JSON once. Copy deep link builds the client URL as <prefix> + Base64(UTF-8 JSON) — the standard …://routing/add/{payload} form (choose scheme below). Stored in routing.profiles.",
               })}
             </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--fg-muted)]">
+                {t("subBuilder.clientRouting.delivery", { defaultValue: "Routing delivery" })}
+              </span>
+              <SelectNative
+                value={routing.delivery ?? "header"}
+                onChange={(e) =>
+                  setRouting({ delivery: e.target.value as ResponseHeaderDelivery })
+                }
+                aria-label={t("subBuilder.clientRouting.delivery", {
+                  defaultValue: "Routing delivery",
+                })}
+              >
+                {(["header", "body", "both", "none"] as const).map((opt) => (
+                  <option key={opt} value={opt}>
+                    {t(`subBuilder.responseRules.extraHeaderDelivery.${opt}`, {
+                      defaultValue:
+                        opt === "header"
+                          ? "HTTP header"
+                          : opt === "body"
+                            ? "Body comment"
+                            : opt === "both"
+                              ? "Header + body"
+                              : "Disabled",
+                    })}
+                  </option>
+                ))}
+              </SelectNative>
+              <span className="text-[11px] text-[var(--fg-subtle)]">
+                {t("subBuilder.clientRouting.deliveryHint", {
+                  defaultValue:
+                    "How Routing / Routing-Enable reach Happ clients. Body adds #routing-enable: 1; the deeplink stays in the HTTP header.",
+                })}
+              </span>
+            </div>
           </div>
         </div>
       </div>

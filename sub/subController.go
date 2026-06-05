@@ -215,8 +215,10 @@ func (a *SUBController) subs(c *gin.Context) {
 		clientAnnounce = clientEntity.Announce
 	}
 
+	result = prependSubscriptionBodyMetaComments(result, uaClient, cfg, clientAnnounce)
+
 	a.ApplyCommonHeaders(c, cfg, header, subId, clientAnnounce)
-	c.Writer.Header().Set("Content-Type", ContentTypeFor(uaFormat))
+	c.Writer.Header().Set("Content-Type", ContentTypeForClient(uaClient, uaFormat))
 
 	// Dispatch the body encoding based on both the UA-derived format and the
 	// global encryption flag. Encrypted-aware clients (Happ/v2rayTun) get
@@ -305,33 +307,32 @@ func (a *SUBController) ApplyCommonHeaders(c *gin.Context, cfg *service.SharxSub
 		rr = cfg.ResponseRules
 	}
 
-	if rr != nil && rr.ProfileUpdateInterval > 0 {
-		c.Writer.Header().Set("Profile-Update-Interval", strconv.Itoa(rr.ProfileUpdateInterval))
-	} else {
-		c.Writer.Header().Set("Profile-Update-Interval", "12")
+	sendInterval := rr == nil || service.ResponseHeaderDeliversHTTP(rr.ProfileUpdateIntervalDelivery)
+	if sendInterval {
+		c.Writer.Header().Set("Profile-Update-Interval", strconv.Itoa(service.ProfileUpdateIntervalValue(rr)))
 	}
 
-	if rr != nil && strings.TrimSpace(rr.ProfileTitle) != "" {
-		title := rr.ProfileTitle
-		if strings.HasPrefix(title, "base64:") {
+	if rr != nil && service.ResponseHeaderDeliversHTTP(rr.ProfileTitleDelivery) {
+		if title := service.ProfileTitleHTTPValue(rr.ProfileTitle); title != "" {
 			c.Writer.Header().Set("Profile-Title", title)
-		} else {
-			c.Writer.Header().Set("Profile-Title", "base64:"+base64.StdEncoding.EncodeToString([]byte(title)))
 		}
 	}
 
-	if rr != nil && strings.TrimSpace(rr.SupportURL) != "" {
-		c.Writer.Header().Set("Support-Url", rr.SupportURL)
+	if rr != nil && service.ResponseHeaderDeliversHTTP(rr.SupportURLDelivery) {
+		if v := strings.TrimSpace(rr.SupportURL); v != "" {
+			c.Writer.Header().Set("Support-Url", v)
+		}
 	}
-	if rr != nil && strings.TrimSpace(rr.ProfileWebPageURL) != "" {
-		c.Writer.Header().Set("Profile-Web-Page-Url", rr.ProfileWebPageURL)
+	if rr != nil && service.ResponseHeaderDeliversHTTP(rr.ProfileWebPageURLDelivery) {
+		if v := strings.TrimSpace(rr.ProfileWebPageURL); v != "" {
+			c.Writer.Header().Set("Profile-Web-Page-Url", v)
+		}
 	}
 
-	switch {
-	case clientAnnounce != "":
-		c.Writer.Header().Set("Announce", clientAnnounce)
-	case rr != nil && rr.Announce != "":
-		c.Writer.Header().Set("Announce", rr.Announce)
+	if rr != nil && service.ResponseHeaderDeliversHTTP(rr.AnnounceDelivery) {
+		if v := service.EffectiveAnnounce(clientAnnounce, rr.Announce); v != "" {
+			c.Writer.Header().Set("Announce", v)
+		}
 	}
 
 	settingService := service.SettingService{}
@@ -344,7 +345,12 @@ func (a *SUBController) ApplyCommonHeaders(c *gin.Context, cfg *service.SharxSub
 	// Client routing (Happ-style JSON) from subscription page config: first inline profile.
 	// Value is a full deeplink happ://routing/add/{base64} (or incy/sharx/custom prefix) per Happ docs.
 	// ExtraHeaders below can override Routing / Routing-Enable if set manually.
-	if routingVal, ok := service.RoutingHeaderValueForSubscription(cfg); ok {
+	routingDelivery := service.ResponseHeaderDeliveryHeader
+	if cfg != nil && cfg.Routing != nil {
+		routingDelivery = cfg.Routing.Delivery
+	}
+	if routingVal, ok := service.RoutingHeaderValueForSubscription(cfg); ok &&
+		service.ResponseHeaderDeliversHTTP(routingDelivery) {
 		c.Writer.Header().Set("Routing", routingVal)
 		c.Writer.Header().Set("Routing-Enable", "1")
 	}
@@ -352,7 +358,7 @@ func (a *SUBController) ApplyCommonHeaders(c *gin.Context, cfg *service.SharxSub
 	if rr != nil {
 		for _, h := range rr.ExtraHeaders {
 			key := strings.TrimSpace(h.Key)
-			if key == "" {
+			if key == "" || !service.ResponseHeaderDeliversHTTP(h.Delivery) {
 				continue
 			}
 			c.Writer.Header().Set(key, h.Value)
