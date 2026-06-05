@@ -1,8 +1,19 @@
 import { Check } from "lucide-react";
-import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  useId,
+  type InputHTMLAttributes,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 
 function cx(...parts: (string | false | undefined)[]) {
   return parts.filter(Boolean).join(" ");
+}
+
+/** Mouse click on a label focuses the sr-only input and scrolls overflow parents to top. */
+function preventLabelFocusScroll(e: MouseEvent<HTMLLabelElement>) {
+  if (e.button === 0) e.preventDefault();
 }
 
 /** Visual box (must follow a `peer` checkbox input in the same label). */
@@ -36,6 +47,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
 ) {
   return (
     <label
+      onMouseDown={preventLabelFocusScroll}
       className={cx(
         "inline-flex shrink-0 cursor-pointer items-center",
         rest.disabled && "cursor-not-allowed",
@@ -68,6 +80,7 @@ export function CheckboxField({
   return (
     <label
       htmlFor={cid}
+      onMouseDown={preventLabelFocusScroll}
       className={cx(
         "flex cursor-pointer gap-2.5 text-sm text-[var(--fg-muted)]",
         align === "start" ? "items-start" : "items-center",

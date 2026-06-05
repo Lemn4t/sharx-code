@@ -824,9 +824,18 @@ func (s *ClientService) UpdateClient(userId int, client *model.ClientEntity) (bo
 
 		// Check if enable status changed
 		enableChanged := existing.Enable != finalClient.Enable
-		inboundAssignmentsChanged := client.InboundIds != nil
+		inboundAssignmentsChanged := false
+		if client.InboundIds != nil {
+			priorInboundIds := inboundAssignmentIDs(currentMappings)
+			inboundAssignmentsChanged = !inboundIDsEqual(client.InboundIds, priorInboundIds)
+		}
+		subscriptionStateChanged := existing.TotalGB != finalClient.TotalGB ||
+			existing.ExpiryTime != finalClient.ExpiryTime ||
+			existing.Enable != finalClient.Enable ||
+			existing.Status != finalClient.Status
 		settingsAffectingChange := enableChanged ||
 			inboundAssignmentsChanged ||
+			subscriptionStateChanged ||
 			existing.UUID != finalClient.UUID ||
 			existing.Password != finalClient.Password ||
 			existing.Security != finalClient.Security ||
@@ -1203,6 +1212,61 @@ func (s *ClientService) AssignClientToInbounds(tx *gorm.DB, clientId int, inboun
 		}
 	}
 	return nil
+}
+
+// inboundAssignmentIDs returns inbound ids in mapping sort order (before a sync).
+func inboundAssignmentIDs(mappings []model.ClientInboundMapping) []int {
+	if len(mappings) == 0 {
+		return nil
+	}
+	sorted := append([]model.ClientInboundMapping(nil), mappings...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].SortOrder != sorted[j].SortOrder {
+			return sorted[i].SortOrder < sorted[j].SortOrder
+		}
+		return sorted[i].InboundId < sorted[j].InboundId
+	})
+	out := make([]int, 0, len(sorted))
+	for _, m := range sorted {
+		if m.InboundId > 0 {
+			out = append(out, m.InboundId)
+		}
+	}
+	return out
+}
+
+// normalizeInboundIDList deduplicates inbound ids preserving first-seen order (matches SyncClientInboundAssignments).
+func normalizeInboundIDList(ids []int) []int {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]int, 0, len(ids))
+	seen := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+func inboundIDsEqual(want, have []int) bool {
+	a := normalizeInboundIDList(want)
+	b := normalizeInboundIDList(have)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // SyncClientInboundAssignments updates client↔inbound rows to match wantInboundIds order without

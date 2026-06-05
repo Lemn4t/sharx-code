@@ -109,7 +109,7 @@ func patchHysteriaObfs(stream map[string]any) {
 			cleaned = append(cleaned, normalized)
 		default:
 			if typ != "" {
-				logger.Debug("Hysteria obfs type %q is not supported; stripping entry.", typ)
+				logger.Debugf("Hysteria obfs type %q is not supported; stripping entry.", typ)
 			}
 		}
 	}
