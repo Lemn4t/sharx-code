@@ -12,10 +12,13 @@ const (
 	LoginFail    LoginStatus = 0 // Failed login attempt
 )
 
-// StatsNotifyJob sends periodic statistics reports via Telegram bot.
+// StatsNotifyJob sends the periodic DB backup to Telegram admins.
+// It checks tgBotEnable and tgBotBackup at run time so the job does not need
+// to be re-registered when the operator saves settings after panel startup.
+// Backup does not require Xray to be running.
 type StatsNotifyJob struct {
-	xrayService  service.XrayService
-	tgbotService service.Tgbot
+	tgbotService   service.Tgbot
+	settingService service.SettingService
 }
 
 // NewStatsNotifyJob creates a new statistics notification job instance.
@@ -23,9 +26,12 @@ func NewStatsNotifyJob() *StatsNotifyJob {
 	return new(StatsNotifyJob)
 }
 
-// Run sends a statistics report via Telegram bot if Xray is running.
+// Run sends the DB backup via Telegram bot when both tgBotEnable and
+// tgBotBackup are enabled in settings. Xray state is not checked because
+// a database backup is independent of the proxy core.
 func (j *StatsNotifyJob) Run() {
-	if !j.xrayService.IsXrayRunning() {
+	enabled, err := j.settingService.GetTgbotEnabled()
+	if err != nil || !enabled {
 		return
 	}
 	j.tgbotService.SendReport()
