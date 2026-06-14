@@ -143,9 +143,11 @@ func (a *SettingController) updateUser(c *gin.Context) {
 	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifyUser"), err)
 }
 
-// restartPanel restarts the panel service after a delay.
+// restartPanel performs a full process restart (not just an in-process SIGHUP reload).
+// In Docker it sends SIGTERM to PID 1 so the container supervisor restarts the binary.
+// On bare-metal (systemd Restart=always / supervisor) os.Exit(0) is used as fallback.
 func (a *SettingController) restartPanel(c *gin.Context) {
-	err := a.panelService.RestartPanel(time.Second * 3)
+	err := a.panelService.RestartContainer(time.Second * 3)
 	if err == nil {
 		tgbot := service.Tgbot{}
 		if tgbot.IsRunning() {
