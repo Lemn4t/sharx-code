@@ -206,7 +206,13 @@ export function SubPageRenderer({
                 data,
                 showQrCodes: branding.showQrCodes,
                 onCopyLink: (url) => void copyText(url, "link"),
-                onShowQr: (url, title) => setQrModal({ url, title }),
+                onShowQr: (url, title) => {
+                  // For WireGuard panel-info blocks, encode only [Interface]/[Peer] conf.
+                  const qrUrl = url.includes("[Interface]")
+                    ? url.slice(url.indexOf("[Interface]"))
+                    : url;
+                  setQrModal({ url: qrUrl, title });
+                },
                 interactive,
                 t,
                 appSettings:

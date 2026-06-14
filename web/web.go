@@ -94,6 +94,8 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	// Avoid Gin's trailing-slash / case-fix redirects; they can emit relative Location (e.g. ./) and loops.
 	engine.RedirectTrailingSlash = false
 	engine.RedirectFixedPath = false
+	// Allow multipart uploads up to 256 MiB (geo files for some regions exceed the default 32 MiB).
+	engine.MaxMultipartMemory = 256 << 20
 
 	webDomain, err := s.settingService.GetWebDomain()
 	if err != nil {
@@ -301,30 +303,19 @@ func (s *Server) startTask() {
 	s.cron.AddJob(job.NodeJobTickSchedule, job.NewCheckNodeHealthJob())
 	s.cron.AddJob(job.NodeJobTickSchedule, job.NewCollectNodeStatsJob())
 
-	// Make a traffic condition every day, 8:30
-	var entry cron.EntryID
-	isTgbotenabled, err := s.settingService.GetTgbotEnabled()
-	if (err == nil) && (isTgbotenabled) {
-		runtime, err := s.settingService.GetTgbotRuntime()
-		if err != nil || runtime == "" {
-			logger.Errorf("Add NewStatsNotifyJob error[%s], Runtime[%s] invalid, will run default", err, runtime)
-			runtime = "@daily"
-		}
-		logger.Infof("Tg notify enabled,run at %s", runtime)
-		_, err = s.cron.AddJob(runtime, job.NewStatsNotifyJob())
-		if err != nil {
-			logger.Warning("Add NewStatsNotifyJob error", err)
-		}
-
-		// CPU alert: sample every 15s (each sample blocks ~5s); do not use @every 1s with a long Percent interval
-		cpuThreshold, err := s.settingService.GetTgCpu()
-		if (err == nil) && (cpuThreshold > 0) {
-			if _, err := s.cron.AddJob("@every 15s", job.NewCheckCpuJob()); err != nil {
-				logger.Warning("Add CheckCpuJob error", err)
-			}
-		}
-	} else {
-		s.cron.Remove(entry)
+	// TG backup / stats notify: always register so the job picks up settings
+	// changes (tgBotEnable, tgRunTime, tgBotBackup) without a panel restart.
+	// The job itself checks tgBotEnable + tgBotBackup at run time.
+	tgRuntime, err := s.settingService.GetTgbotRuntime()
+	if err != nil || tgRuntime == "" {
+		tgRuntime = "@daily"
+	}
+	if _, err = s.cron.AddJob(tgRuntime, job.NewStatsNotifyJob()); err != nil {
+		logger.Warning("Add NewStatsNotifyJob error", err)
+	}
+	// CPU alert: always register; job checks threshold at run time.
+	if _, err := s.cron.AddJob("@every 15s", job.NewCheckCpuJob()); err != nil {
+		logger.Warning("Add CheckCpuJob error", err)
 	}
 }
 

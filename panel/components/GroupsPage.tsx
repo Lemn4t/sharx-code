@@ -350,7 +350,7 @@ export function GroupsPage() {
     try {
       const r = await postJson<unknown>(
         panel(`group/${inboundGroup.id}/bulk/assignInbounds`),
-        { inboundIds: selected },
+        { inboundIds: selected, mode: "replace" },
         true,
       );
       if (r.success) {

@@ -4488,7 +4488,12 @@ export function ClientsPage() {
         ) : (
           <div className="max-h-[60vh] space-y-4 overflow-y-auto text-sm">
             {keysRows.map((row) => {
-              const keyQrTooLong = row.link.length > 2500;
+              // For WireGuard, QR codes must contain only the [Interface]/[Peer] conf block.
+              const wgConfText = row.protocol === "wireguard" && row.link.includes("[Interface]")
+                ? row.link.slice(row.link.indexOf("[Interface]"))
+                : null;
+              const qrText = wgConfText ?? row.link;
+              const keyQrTooLong = qrText.length > 2500;
               return (
               <div
                 key={`${row.inboundId}-${row.protocol}`}
@@ -4569,7 +4574,7 @@ export function ClientsPage() {
                             defaultValue: "Show QR code for this connection string",
                           })
                     }
-                    onClick={() => setConnectionKeyQrText(row.link)}
+                    onClick={() => setConnectionKeyQrText(qrText)}
                   >
                     <QrCode size={12} className="mr-1 inline" />
                     {t("qrCode")}

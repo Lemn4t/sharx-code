@@ -875,12 +875,13 @@ func (s *Server) uploadGeofile(c *gin.Context) {
 		return
 	}
 	defer file.Close()
-	content, err := io.ReadAll(io.LimitReader(file, 64*1024*1024+1))
+	const nodeMaxGeoSize = 256 * 1024 * 1024
+	content, err := io.ReadAll(io.LimitReader(file, nodeMaxGeoSize+1))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if len(content) > 64*1024*1024 {
+	if len(content) > nodeMaxGeoSize {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
 		return
 	}

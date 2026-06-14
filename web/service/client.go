@@ -288,7 +288,8 @@ func (s *ClientService) xrayUserPayloadForInbound(client *model.ClientEntity, in
 		var settings map[string]interface{}
 		json.Unmarshal([]byte(inbound.Settings), &settings)
 		if method, ok := settings["method"].(string); ok {
-			clientData["method"] = method
+			// Xray gRPC AddUser payload uses "cipher" key (not "method").
+			clientData["cipher"] = method
 		}
 		clientData["password"] = client.Password
 	case model.VMESS, model.VLESS:
@@ -918,7 +919,7 @@ func (s *ClientService) UpdateClient(userId int, client *model.ClientEntity) (bo
 								var settings map[string]interface{}
 								json.Unmarshal([]byte(inbound.Settings), &settings)
 								if method, ok := settings["method"].(string); ok {
-									clientData["method"] = method
+									clientData["cipher"] = method
 								}
 								clientData["password"] = finalClient.Password
 							case model.VMESS, model.VLESS:
@@ -1687,7 +1688,7 @@ func (s *ClientService) ResetAllClientTraffics(userId int) (bool, error) {
 						clientData["auth"] = client.Password
 					case model.Shadowsocks:
 						if method != "" {
-							clientData["method"] = method
+							clientData["cipher"] = method
 						}
 						clientData["password"] = client.Password
 					case model.VMESS, model.VLESS:
@@ -1829,7 +1830,7 @@ func (s *ClientService) ResetClientTraffic(userId int, clientId int) (bool, erro
 						var settings map[string]any
 						json.Unmarshal([]byte(inbound.Settings), &settings)
 						if method, ok := settings["method"].(string); ok {
-							clientData["method"] = method
+							clientData["cipher"] = method
 						}
 						clientData["password"] = client.Password
 					case model.VMESS, model.VLESS:
@@ -2197,7 +2198,7 @@ func (s *ClientService) BulkResetTraffic(userId int, clientIds []int) (bool, err
 						var settings map[string]any
 						json.Unmarshal([]byte(inbound.Settings), &settings)
 						if method, ok := settings["method"].(string); ok {
-							clientData["method"] = method
+							clientData["cipher"] = method
 						}
 						clientData["password"] = client.Password
 					case model.VMESS, model.VLESS:
@@ -2477,7 +2478,7 @@ func (s *ClientService) BulkEnable(userId int, clientIds []int, enable bool) (bo
 							var settings map[string]interface{}
 							json.Unmarshal([]byte(inbound.Settings), &settings)
 							if method, ok := settings["method"].(string); ok {
-								clientData["method"] = method
+								clientData["cipher"] = method
 							}
 							clientData["password"] = client.Password
 						case model.VMESS, model.VLESS:
@@ -2614,11 +2615,19 @@ func (s *ClientService) BulkSetHWIDLimit(userId int, clientIds []int, maxHwid in
 	return nil
 }
 
-// BulkAssignInbounds assigns multiple inbounds to multiple clients.
+// BulkAssignInbounds assigns inbounds to multiple clients.
+// mode controls the merge strategy:
+//   - "replace" (default): the selected inboundIds become the exact set for each client
+//     (adds missing ones AND removes any that are no longer selected).
+//   - "add": legacy union behaviour — only adds, never removes.
+//
 // Returns whether Xray needs restart and any error.
-func (s *ClientService) BulkAssignInbounds(userId int, clientIds []int, inboundIds []int) (bool, error) {
-	if len(clientIds) == 0 || len(inboundIds) == 0 {
+func (s *ClientService) BulkAssignInbounds(userId int, clientIds []int, inboundIds []int, mode string) (bool, error) {
+	if len(clientIds) == 0 {
 		return false, nil
+	}
+	if mode != "add" {
+		mode = "replace" // default
 	}
 
 	// Verify all clients belong to user
@@ -2634,7 +2643,7 @@ func (s *ClientService) BulkAssignInbounds(userId int, clientIds []int, inboundI
 		return false, common.NewError("Some clients not found or access denied")
 	}
 
-	// Verify all inbounds belong to user
+	// Verify all inbounds belong to user (skip when replacing with empty set)
 	inboundService := InboundService{}
 	for _, inboundId := range inboundIds {
 		inbound, err := inboundService.GetInbound(inboundId)
@@ -2655,30 +2664,31 @@ func (s *ClientService) BulkAssignInbounds(userId int, clientIds []int, inboundI
 		return false, err
 	}
 
-	// For each client, add the new inbounds (keeping existing ones)
 	for _, client := range clients {
-		// Get current inbound assignments
-		currentInboundIds, err := s.GetInboundIdsForClient(client.Id)
-		if err != nil {
-			continue
+		var newInboundIds []int
+
+		if mode == "add" {
+			// Legacy: union of current + requested
+			currentInboundIds, err := s.GetInboundIdsForClient(client.Id)
+			if err != nil {
+				continue
+			}
+			inboundIdSet := make(map[int]bool, len(currentInboundIds)+len(inboundIds))
+			for _, id := range currentInboundIds {
+				inboundIdSet[id] = true
+			}
+			for _, id := range inboundIds {
+				inboundIdSet[id] = true
+			}
+			newInboundIds = make([]int, 0, len(inboundIdSet))
+			for id := range inboundIdSet {
+				newInboundIds = append(newInboundIds, id)
+			}
+		} else {
+			// Replace: requested set is the exact new assignment
+			newInboundIds = append([]int(nil), inboundIds...)
 		}
 
-		// Create a set of all inbound IDs (current + new)
-		inboundIdSet := make(map[int]bool)
-		for _, id := range currentInboundIds {
-			inboundIdSet[id] = true
-		}
-		for _, id := range inboundIds {
-			inboundIdSet[id] = true
-		}
-
-		// Convert set back to slice
-		newInboundIds := make([]int, 0, len(inboundIdSet))
-		for id := range inboundIdSet {
-			newInboundIds = append(newInboundIds, id)
-		}
-
-		// Update client with new inbound assignments
 		client.InboundIds = newInboundIds
 		clientNeedRestart, err := s.UpdateClient(userId, &client)
 		if err != nil {

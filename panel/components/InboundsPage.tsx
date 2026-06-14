@@ -4651,14 +4651,15 @@ export function InboundsPage() {
                       <p className="text-xs font-medium text-[var(--fg-muted)]">
                         {t("pages.inbounds.sockoptSection", { defaultValue: "Sockopt (inbound)" })}
                       </p>
+                      {/* Checkboxes in their own row so they don't mix heights with labeled inputs */}
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                        <CheckboxField
+                          checked={form.streamForm.sockoptTcpFastOpen}
+                          onChange={(e) => setStreamFormField("sockoptTcpFastOpen", e.target.checked)}
+                          label={t("pages.inbounds.sockoptTcpFastOpen", { defaultValue: "TCP Fast Open" })}
+                        />
+                      </div>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div className="flex items-center pb-1">
-                          <CheckboxField
-                            checked={form.streamForm.sockoptTcpFastOpen}
-                            onChange={(e) => setStreamFormField("sockoptTcpFastOpen", e.target.checked)}
-                            label={t("pages.inbounds.sockoptTcpFastOpen", { defaultValue: "TCP Fast Open" })}
-                          />
-                        </div>
                         <div>
                           <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="in-sockopt-tproxy">
                             {t("pages.inbounds.sockoptTproxy", { defaultValue: "TProxy" })}
@@ -4700,6 +4701,20 @@ export function InboundsPage() {
                             value={String(form.streamForm.sockoptTcpKeepAlive)}
                             onChange={(e) =>
                               setStreamFormField("sockoptTcpKeepAlive", Math.max(0, parseInt(e.target.value, 10) || 0))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="in-sockopt-tcpmss">
+                            {t("pages.inbounds.sockoptTcpMss", { defaultValue: "TCP MSS (0=default)" })}
+                          </label>
+                          <Input
+                            id="in-sockopt-tcpmss"
+                            type="number"
+                            min={0}
+                            value={String(form.streamForm.sockoptTcpMss)}
+                            onChange={(e) =>
+                              setStreamFormField("sockoptTcpMss", Math.max(0, parseInt(e.target.value, 10) || 0))
                             }
                           />
                         </div>

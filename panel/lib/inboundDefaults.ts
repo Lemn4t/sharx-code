@@ -618,6 +618,7 @@ export type StreamFormState = {
   sockoptTproxy: "off" | "redirect" | "tproxy";
   sockoptMark: number;
   sockoptTcpKeepAlive: number;
+  sockoptTcpMss: number;
   /** TLS extra: OCSP stapling cache TTL (seconds, 0 = disabled) */
   tlsOcspStapling: number;
   /** TLS mutual auth: require client certificate */
@@ -727,6 +728,7 @@ export function defaultStreamForm(): StreamFormState {
     sockoptTproxy: "off",
     sockoptMark: 0,
     sockoptTcpKeepAlive: 0,
+    sockoptTcpMss: 0,
     tlsOcspStapling: 0,
     tlsVerifyClientCertificate: false,
     tlsPinnedSha256: "",
@@ -1230,6 +1232,9 @@ export function parseStreamSettingsToForm(
       if (typeof sockopt.tcpKeepAliveInterval === "number" && sockopt.tcpKeepAliveInterval >= 0) {
         base.sockoptTcpKeepAlive = sockopt.tcpKeepAliveInterval;
       }
+      if (typeof sockopt.tcpMss === "number" && sockopt.tcpMss > 0) {
+        base.sockoptTcpMss = sockopt.tcpMss;
+      }
     }
     const ws = root.wsSettings as Record<string, unknown> | undefined;
     if (ws) {
@@ -1516,13 +1521,15 @@ export function buildStreamSettingsFromForm(
     state.sockoptTcpFastOpen ||
     state.sockoptTproxy !== "off" ||
     state.sockoptMark > 0 ||
-    state.sockoptTcpKeepAlive > 0;
+    state.sockoptTcpKeepAlive > 0 ||
+    state.sockoptTcpMss > 0;
   if (hasSockopt) {
     const sockopt: Record<string, unknown> = {};
     if (state.sockoptTcpFastOpen) sockopt.tcpFastOpen = true;
     if (state.sockoptTproxy !== "off") sockopt.tproxy = state.sockoptTproxy;
     if (state.sockoptMark > 0) sockopt.mark = state.sockoptMark;
     if (state.sockoptTcpKeepAlive > 0) sockopt.tcpKeepAliveInterval = state.sockoptTcpKeepAlive;
+    if (state.sockoptTcpMss > 0) sockopt.tcpMss = state.sockoptTcpMss;
     out.sockopt = sockopt;
   }
 
@@ -2017,15 +2024,26 @@ export function randomWsPath(): string {
 }
 
 /**
+ * Strip any leading random hex labels (pattern `[0-9a-f]{6}.`) that a previous
+ * call to suggestRandomTlsSni may have prepended, so repeated clicks replace
+ * rather than accumulate: e.g. "ab12cd.ef34gh.example.com" → "example.com".
+ */
+function stripRandomHexLabels(host: string): string {
+  return host.replace(/^([0-9a-f]{6}\.)+/i, "");
+}
+
+/**
  * Random TLS SNI-style hostname: random label + base domain from ws host, TLS SNI, or example.com.
+ * Strips any previously prepended hex labels before generating the new one.
  */
 export function suggestRandomTlsSni(wsHost: string, tlsServerName: string): string {
-  const pick =
+  const rawPick =
     hostFromRealityTarget(wsHost.trim()) ||
     hostFromRealityTarget(tlsServerName.trim()) ||
     "example.com";
+  const base = stripRandomHexLabels(rawPick.replace(/^\.+/, ""));
   const label = randomHexSeq(6);
-  return `${label}.${pick.replace(/^\.+/, "")}`;
+  return `${label}.${base}`;
 }
 
 export { randomPassword };

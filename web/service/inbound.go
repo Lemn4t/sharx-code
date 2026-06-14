@@ -252,8 +252,13 @@ func (s *InboundService) generateInboundTag(inbound *model.Inbound, multiMode bo
 	return fmt.Sprintf("inbound-%v:%v", inbound.Listen, inbound.Port)
 }
 
-func (s *InboundService) checkPortExist(listen string, port int, ignoreId int) (bool, error) {
+// checkPortExist reports whether the standalone (single-node) DB already contains an inbound
+// that conflicts on port/listen with the given protocol. Hysteria2 uses UDP; all other protocols
+// use TCP, so a hy2 inbound and a non-hy2 inbound may share the same port (mirrors multi-node
+// logic from NodeService.CheckInboundPortConflictOnNodes).
+func (s *InboundService) checkPortExist(listen string, port int, protocol model.Protocol, ignoreId int) (bool, error) {
 	db := database.GetDB()
+	isHy2 := model.NormalizeProtocol(protocol) == model.Hysteria2
 	if listen == "" || listen == "0.0.0.0" || listen == "::" || listen == "::0" {
 		db = db.Model(model.Inbound{}).Where("port = ?", port)
 	} else {
@@ -273,6 +278,13 @@ func (s *InboundService) checkPortExist(listen string, port int, ignoreId int) (
 	}
 	if ignoreId > 0 {
 		db = db.Where("id != ?", ignoreId)
+	}
+	// Only conflict with inbounds that share the same transport layer:
+	// hysteria2 = UDP; everything else = TCP.
+	if isHy2 {
+		db = db.Where("protocol = ?", string(model.Hysteria2))
+	} else {
+		db = db.Where("protocol != ?", string(model.Hysteria2))
 	}
 	var count int64
 	err := db.Count(&count).Error
@@ -301,9 +313,11 @@ func (s *InboundService) GetClients(inbound *model.Inbound) ([]model.Client, err
 	return clients, nil
 }
 
-// VLESSFlowFromInboundSettings returns VLESS flow only from the inbound's settings JSON
-// (settings.clients[0].flow, else the first non-empty flow in settings.clients). Per-client
-// flow on ClientEntity is not a source; it is kept in sync from assigned inbounds in ClientService.
+// VLESSFlowFromInboundSettings returns the effective VLESS flow from the inbound's settings JSON.
+// Only settings.clients[0].flow is read: it is the canonical value written by the panel form and
+// propagated to all other clients by SanitizeVLESSFlowInInboundSettings. Scanning further clients
+// for a non-empty fallback caused the "flow cannot be set back to None" bug when clients[1..N]
+// still held stale xtls-rprx-vision values.
 func VLESSFlowFromInboundSettings(inboundSettings string) string {
 	if strings.TrimSpace(inboundSettings) == "" {
 		return ""
@@ -316,23 +330,8 @@ func VLESSFlowFromInboundSettings(inboundSettings string) string {
 	if len(clients) > 0 {
 		if cm, ok := clients[0].(map[string]any); ok {
 			if f, ok := cm["flow"].(string); ok {
-				if t := strings.TrimSpace(f); t != "" {
-					return t
-				}
+				return strings.TrimSpace(f)
 			}
-		}
-	}
-	for _, c := range clients {
-		cm, ok := c.(map[string]any)
-		if !ok {
-			continue
-		}
-		f, ok := cm["flow"].(string)
-		if !ok {
-			continue
-		}
-		if t := strings.TrimSpace(f); t != "" {
-			return t
 		}
 	}
 	return ""
@@ -544,7 +543,7 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 	settingService := SettingService{}
 	multiMode, _ := settingService.GetMultiNodeMode()
 	if !multiMode {
-		exist, err := s.checkPortExist(inbound.Listen, inbound.Port, 0)
+		exist, err := s.checkPortExist(inbound.Listen, inbound.Port, inbound.Protocol, 0)
 		if err != nil {
 			return inbound, false, err
 		}
@@ -914,7 +913,7 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 	settingService := SettingService{}
 	multiMode, _ := settingService.GetMultiNodeMode()
 	if !multiMode {
-		exist, err := s.checkPortExist(inbound.Listen, inbound.Port, inbound.Id)
+		exist, err := s.checkPortExist(inbound.Listen, inbound.Port, inbound.Protocol, inbound.Id)
 		if err != nil {
 			// #region agent log
 			logger.Debugf("[DEBUG-AGENT] UpdateInbound service: checkPortExist error, inboundId=%d, error=%v", inbound.Id, err)

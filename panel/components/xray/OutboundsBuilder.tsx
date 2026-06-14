@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Link, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import {
@@ -17,6 +17,7 @@ import {
   serializeOutboundsSection,
   updateRowProtocol,
 } from "@/lib/xrayOutboundForm";
+import { parseProxyLink } from "@/lib/parseProxyLink";
 import { Button, Input, SelectNative } from "@/components/ui";
 
 type Props = {
@@ -832,6 +833,9 @@ export function OutboundsBuilder({ value, onChange, readOnly, t, syncKey }: Prop
   const [initError, setInitError] = useState<string | null>(null);
   const lastEmitted = useRef<string | null>(null);
   const prevSyncKey = useRef(syncKey);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const normJson = useCallback((s: string) => {
     try {
@@ -977,16 +981,100 @@ export function OutboundsBuilder({ value, onChange, readOnly, t, syncKey }: Prop
           </div>
         );
       })}
-      <Button
-        type="button"
-        variant="secondary"
-        className="!gap-2"
-        disabled={readOnly}
-        onClick={() => push([...rows, newOutboundRow("freedom")])}
-      >
-        <Plus size={16} />
-        {t("pages.xray.outbound.add")}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          className="!gap-2"
+          disabled={readOnly}
+          onClick={() => push([...rows, newOutboundRow("freedom")])}
+        >
+          <Plus size={16} />
+          {t("pages.xray.outbound.add")}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="!gap-2"
+          disabled={readOnly}
+          onClick={() => {
+            setImportText("");
+            setImportError(null);
+            setImportOpen((v) => !v);
+          }}
+        >
+          <Link size={16} />
+          {t("pages.xray.outbound.importFromLink", "Import from link")}
+        </Button>
+      </div>
+      {importOpen && !readOnly && (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 space-y-2">
+          <p className="text-xs text-[var(--fg-muted)]">
+            {t("pages.xray.outbound.importHint", "Paste vless://, vmess://, trojan://, or ss:// links (one per line)")}
+          </p>
+          <textarea
+            className="w-full rounded border border-[var(--border)] bg-[var(--bg)] p-2 text-sm font-mono resize-y min-h-[80px] text-[var(--fg)]"
+            placeholder="vless://..."
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+          />
+          {importError && <p className="text-xs text-rose-400">{importError}</p>}
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => {
+                const lines = importText.split("\n").map((l) => l.trim()).filter(Boolean);
+                if (lines.length === 0) {
+                  setImportError(t("pages.xray.outbound.importEmpty", "No links to import"));
+                  return;
+                }
+                const imported: OutboundFormRow[] = [];
+                const failed: string[] = [];
+                for (const line of lines) {
+                  const parsed = parseProxyLink(line);
+                  if (parsed) {
+                    imported.push({ id: `import-${Date.now()}-${Math.random()}`, ...parsed });
+                  } else {
+                    failed.push(line.slice(0, 60));
+                  }
+                }
+                if (imported.length === 0) {
+                  setImportError(t("pages.xray.outbound.importFailed", "Could not parse any links"));
+                  return;
+                }
+                push([...rows, ...imported]);
+                setImportOpen(false);
+                setImportText("");
+                setImportError(null);
+                if (failed.length > 0) {
+                  // show partial failure info
+                  setImportError(
+                    t("pages.xray.outbound.importPartial", `Imported {{count}} links. Failed: {{failed}}`, {
+                      count: imported.length,
+                      failed: failed.join(", "),
+                    }),
+                  );
+                  setImportOpen(true);
+                }
+              }}
+            >
+              {t("pages.xray.outbound.importApply", "Import")}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setImportOpen(false);
+                setImportError(null);
+                setImportText("");
+              }}
+            >
+              {t("cancel", "Cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
