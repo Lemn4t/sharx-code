@@ -47,6 +47,9 @@ func (a *ClientGroupController) initRouter(g *gin.RouterGroup) {
 	g.POST("/:id/bulk/enable", a.bulkEnable)
 	g.POST("/:id/bulk/setHwidLimit", a.bulkSetHwidLimit)
 	g.POST("/:id/bulk/assignInbounds", a.bulkAssignInbounds)
+	g.POST("/:id/bulk/setExpiry", a.bulkSetExpiry)
+	g.POST("/:id/bulk/setTrafficLimit", a.bulkSetTrafficLimit)
+	g.POST("/:id/bulk/setIPLimit", a.bulkSetIPLimit)
 }
 
 // getGroups retrieves all groups for the current user.
@@ -459,4 +462,113 @@ func (a *ClientGroupController) bulkAssignInbounds(c *gin.Context) {
 		// Restart asynchronously to avoid blocking the response
 		a.xrayService.RestartXrayAsync(false)
 	}
+}
+
+// bulkSetExpiry sets the expiry time for all clients in a group.
+func (a *ClientGroupController) bulkSetExpiry(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, "Invalid group ID", err)
+		return
+	}
+	user := session.GetLoginUser(c)
+	var req struct {
+		ExpiryTime int64 `json:"expiryTime" form:"expiryTime"`
+	}
+	if err = c.ShouldBind(&req); err != nil {
+		jsonMsg(c, "Invalid request data", err)
+		return
+	}
+	clients, err := a.groupService.GetClientsInGroup(id, user.Id)
+	if err != nil {
+		jsonMsg(c, "Failed to get clients in group", err)
+		return
+	}
+	if len(clients) == 0 {
+		jsonMsg(c, "No clients in group", nil)
+		return
+	}
+	clientIds := make([]int, len(clients))
+	for i, client := range clients {
+		clientIds[i] = client.Id
+	}
+	if err = a.clientService.BulkSetExpiry(user.Id, clientIds, req.ExpiryTime); err != nil {
+		logger.Errorf("Failed to set expiry for group: %v", err)
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonMsg(c, "Expiry updated successfully", nil)
+}
+
+// bulkSetTrafficLimit sets the traffic limit (GB) for all clients in a group.
+func (a *ClientGroupController) bulkSetTrafficLimit(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, "Invalid group ID", err)
+		return
+	}
+	user := session.GetLoginUser(c)
+	var req struct {
+		TotalGB int64 `json:"totalGB" form:"totalGB"`
+	}
+	if err = c.ShouldBind(&req); err != nil {
+		jsonMsg(c, "Invalid request data", err)
+		return
+	}
+	clients, err := a.groupService.GetClientsInGroup(id, user.Id)
+	if err != nil {
+		jsonMsg(c, "Failed to get clients in group", err)
+		return
+	}
+	if len(clients) == 0 {
+		jsonMsg(c, "No clients in group", nil)
+		return
+	}
+	clientIds := make([]int, len(clients))
+	for i, client := range clients {
+		clientIds[i] = client.Id
+	}
+	if err = a.clientService.BulkSetTrafficLimit(user.Id, clientIds, req.TotalGB); err != nil {
+		logger.Errorf("Failed to set traffic limit for group: %v", err)
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonMsg(c, "Traffic limit updated successfully", nil)
+}
+
+// bulkSetIPLimit sets the IP connection limit for all clients in a group.
+func (a *ClientGroupController) bulkSetIPLimit(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, "Invalid group ID", err)
+		return
+	}
+	user := session.GetLoginUser(c)
+	var req struct {
+		MaxIPs  int  `json:"maxIPs" form:"maxIPs"`
+		Enabled bool `json:"enabled" form:"enabled"`
+	}
+	if err = c.ShouldBind(&req); err != nil {
+		jsonMsg(c, "Invalid request data", err)
+		return
+	}
+	clients, err := a.groupService.GetClientsInGroup(id, user.Id)
+	if err != nil {
+		jsonMsg(c, "Failed to get clients in group", err)
+		return
+	}
+	if len(clients) == 0 {
+		jsonMsg(c, "No clients in group", nil)
+		return
+	}
+	clientIds := make([]int, len(clients))
+	for i, client := range clients {
+		clientIds[i] = client.Id
+	}
+	if err = a.clientService.BulkSetIPLimit(user.Id, clientIds, req.MaxIPs, req.Enabled); err != nil {
+		logger.Errorf("Failed to set IP limit for group: %v", err)
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonMsg(c, "IP limit updated successfully", nil)
 }

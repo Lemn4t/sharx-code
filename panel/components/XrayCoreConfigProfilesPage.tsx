@@ -1,11 +1,10 @@
 "use client";
 
 import { FileText, Pencil, Plus, Server, Trash2, Users } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getJson, postJson } from "@/lib/api";
-import { linkP, panel } from "@/lib/paths";
+import { panel } from "@/lib/paths";
 import { PageScaffold, PageHeader, Surface } from "@/components/panel";
 import {
   XrayConfigTemplateEditor,
@@ -331,7 +330,6 @@ export function XrayCoreConfigProfilesPage() {
             <Button
               variant="primary"
               onClick={() => setAddOpen(true)}
-              disabled={multiNode === false}
               className="!gap-2"
             >
               <Plus size={16} />
@@ -341,18 +339,6 @@ export function XrayCoreConfigProfilesPage() {
         }
       />
 
-      {multiNode === false ? (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/90">
-          <p>
-            {t("pages.xrayCoreConfigProfiles.multiNodeOff", {
-              defaultValue: "Enable multi-node mode in panel settings to use core config profiles.",
-            })}
-          </p>
-          <Link href={linkP("panel/settings/general")} className="mt-2 inline-block text-[var(--accent)] underline-offset-2 hover:underline">
-            {t("menu.settings")}
-          </Link>
-        </div>
-      ) : null}
 
       <Surface padding="none" className="overflow-hidden">
         {loading && !profiles.length ? (
@@ -381,11 +367,15 @@ export function XrayCoreConfigProfilesPage() {
                     <p className="mt-1 text-sm text-[var(--fg-muted)]">{pr.description}</p>
                   ) : null}
                   <p className="mt-2 text-xs text-[var(--fg-subtle)]">
-                    {t("pages.xrayCoreConfigProfiles.assignedNodes")}:{" "}
-                    {(pr.nodeIds?.length ?? 0) === 0
-                      ? t("pages.xrayCoreConfigProfiles.nodesNone", { defaultValue: "none assigned" })
-                      : formatProfileAssignmentsLine(pr.nodeIds, nodes, t)}
-                    {" · "}
+                    {multiNode ? (
+                      <>
+                        {t("pages.xrayCoreConfigProfiles.assignedNodes")}:{" "}
+                        {(pr.nodeIds?.length ?? 0) === 0
+                          ? t("pages.xrayCoreConfigProfiles.nodesNone", { defaultValue: "none assigned" })
+                          : formatProfileAssignmentsLine(pr.nodeIds, nodes, t)}
+                        {" · "}
+                      </>
+                    ) : null}
                     {t("pages.xrayCoreConfigProfiles.updatedLabel", { defaultValue: "Updated" })}{" "}
                     {formatTs(pr.updatedAt, locale)}
                   </p>
@@ -396,10 +386,12 @@ export function XrayCoreConfigProfilesPage() {
                       {t("pages.xrayCoreConfigProfiles.setAsDefault")}
                     </Button>
                   ) : null}
-                  <Button type="button" variant="secondary" className="!gap-1.5 !text-xs" onClick={() => openAssign(pr.id)}>
-                    <Users size={14} />
-                    {t("pages.xrayCoreConfigProfiles.assignNodes")}
-                  </Button>
+                  {multiNode ? (
+                    <Button type="button" variant="secondary" className="!gap-1.5 !text-xs" onClick={() => openAssign(pr.id)}>
+                      <Users size={14} />
+                      {t("pages.xrayCoreConfigProfiles.assignNodes")}
+                    </Button>
+                  ) : null}
                   <Button type="button" variant="secondary" className="!gap-1.5 !text-xs" onClick={() => void resetProfile(pr.id)}>
                     {t("pages.xrayCoreConfigProfiles.resetToDefaultTemplate")}
                   </Button>

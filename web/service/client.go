@@ -2702,3 +2702,68 @@ func (s *ClientService) BulkAssignInbounds(userId int, clientIds []int, inboundI
 
 	return needRestart, nil
 }
+
+// BulkSetExpiry sets the expiry timestamp (Unix ms) for all given clients.
+// expiryTime == 0 means no expiry (unlimited).
+func (s *ClientService) BulkSetExpiry(userId int, clientIds []int, expiryTime int64) error {
+	if len(clientIds) == 0 {
+		return nil
+	}
+	db := database.GetDB()
+	var count int64
+	if err := db.Model(&model.ClientEntity{}).
+		Where("id IN ? AND user_id = ?", clientIds, userId).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	if int(count) != len(clientIds) {
+		return common.NewError("some clients not found or access denied")
+	}
+	return db.Model(&model.ClientEntity{}).
+		Where("id IN ? AND user_id = ?", clientIds, userId).
+		Update("expiry_time", expiryTime).Error
+}
+
+// BulkSetTrafficLimit sets the total traffic cap (bytes) for all given clients.
+// totalGB == 0 means unlimited.
+func (s *ClientService) BulkSetTrafficLimit(userId int, clientIds []int, totalGB int64) error {
+	if len(clientIds) == 0 {
+		return nil
+	}
+	db := database.GetDB()
+	var count int64
+	if err := db.Model(&model.ClientEntity{}).
+		Where("id IN ? AND user_id = ?", clientIds, userId).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	if int(count) != len(clientIds) {
+		return common.NewError("some clients not found or access denied")
+	}
+	return db.Model(&model.ClientEntity{}).
+		Where("id IN ? AND user_id = ?", clientIds, userId).
+		Update("total_gb", float64(totalGB)).Error
+}
+
+// BulkSetIPLimit sets IP connection limit for all given clients.
+func (s *ClientService) BulkSetIPLimit(userId int, clientIds []int, maxIPs int, enabled bool) error {
+	if len(clientIds) == 0 {
+		return nil
+	}
+	db := database.GetDB()
+	var count int64
+	if err := db.Model(&model.ClientEntity{}).
+		Where("id IN ? AND user_id = ?", clientIds, userId).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	if int(count) != len(clientIds) {
+		return common.NewError("some clients not found or access denied")
+	}
+	return db.Model(&model.ClientEntity{}).
+		Where("id IN ? AND user_id = ?", clientIds, userId).
+		Updates(map[string]interface{}{
+			"ip_limit_enabled": enabled,
+			"max_ips":          maxIPs,
+		}).Error
+}

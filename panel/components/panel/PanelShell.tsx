@@ -199,20 +199,18 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
         label: t("menu.apiDocs"),
       },
     ];
-    if (multi) {
-      const idx = base.findIndex((x) => "key" in x && x.key === p("panel/inbounds"));
-      const at = idx >= 0 ? idx + 1 : 2;
-      const extra: NavEntry[] = [
-        { kind: "nodes" as const },
-        {
-          key: p("panel/hosts"),
-          href: linkP("panel/hosts"),
-          icon: <Server className="size-[18px] shrink-0 opacity-90" />,
-          label: t("menu.hosts"),
-        },
-      ];
-      base.splice(at, 0, ...extra);
-    }
+    const idx = base.findIndex((x) => "key" in x && x.key === p("panel/inbounds"));
+    const at = idx >= 0 ? idx + 1 : 2;
+    const extraAfterInbounds: NavEntry[] = [
+      {
+        key: p("panel/hosts"),
+        href: linkP("panel/hosts"),
+        icon: <Server className="size-[18px] shrink-0 opacity-90" />,
+        label: t("menu.hosts"),
+      },
+    ];
+    if (multi) extraAfterInbounds.unshift({ kind: "nodes" as const });
+    base.splice(at, 0, ...extraAfterInbounds);
     base.push({
       key: p("logout/"),
       href: p("logout/"),
@@ -395,17 +393,15 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
                             {t("menu.xrayGeoFiles", { defaultValue: "Geo-files" })}
                           </span>
                         </Link>
-                        {multi ? (
-                          <Link
-                            href={linkP("panel/xray-core-config-profiles")}
-                            className={`${navLinkClass(isProfiles)} panel-menu-link--sub`}
-                            onClick={closeMobile}
-                          >
-                            <span className="min-w-0 pl-0.5">
-                              {t("menu.xrayCoreConfigProfiles")}
-                            </span>
-                          </Link>
-                        ) : null}
+                        <Link
+                          href={linkP("panel/xray-core-config-profiles")}
+                          className={`${navLinkClass(isProfiles)} panel-menu-link--sub`}
+                          onClick={closeMobile}
+                        >
+                          <span className="min-w-0 pl-0.5">
+                            {t("menu.xrayCoreConfigProfiles")}
+                          </span>
+                        </Link>
                       </div>
                     ) : null}
                   </div>
