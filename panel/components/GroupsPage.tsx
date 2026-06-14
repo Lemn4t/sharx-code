@@ -1,8 +1,26 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Building2, Pencil, Plus, Trash2 } from "lucide-react";
-import type { TextareaHTMLAttributes } from "react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  Building2,
+  Calendar,
+  Clock,
+  Layers,
+  Pencil,
+  Plus,
+  Power,
+  RotateCcw,
+  Shield,
+  ShieldOff,
+  Trash2,
+  User,
+  Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import type { ReactNode, TextareaHTMLAttributes } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getJson, postJson, type Msg } from "@/lib/api";
 import { panel } from "@/lib/paths";
@@ -11,6 +29,7 @@ import {
   Button,
   CheckboxField,
   ConfirmDialog,
+  IconButton,
   IconTile,
   Input,
   Modal,
@@ -19,7 +38,25 @@ import {
   useToast,
 } from "@/components/ui";
 
-/** Capsule toggle for inbound chips in group bulk-edit, matching the client-edit modal. */
+/** Header used in every section card — matches the client edit modal. */
+function SectionLabel({
+  icon: Icon,
+  children,
+}: {
+  icon: LucideIcon;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mb-3 flex items-center gap-2">
+      <IconTile icon={Icon} tone="accent" size="sm" />
+      <span className="text-xs font-semibold uppercase tracking-wider text-[var(--fg-muted)]">
+        {children}
+      </span>
+    </div>
+  );
+}
+
+/** Capsule toggle for inbound chips inside the group edit modal. */
 function GroupInboundCapsule({
   selected,
   onToggle,
@@ -53,6 +90,8 @@ type GroupRow = {
   name: string;
   description: string;
   clientCount: number;
+  createdAt?: number;
+  updatedAt?: number;
 };
 
 type InboundOption = {
@@ -99,43 +138,56 @@ function pendingBulkDescription(
   }
 }
 
+function formatGroupDateTime(ms: number | undefined, empty: string): string {
+  if (ms == null || ms === 0) return empty;
+  const normalized = ms < 1e12 ? ms * 1000 : ms;
+  try {
+    return new Date(normalized).toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return empty;
+  }
+}
+
 export function GroupsPage() {
   const { t } = useTranslation();
   const toast = useToast();
   const [rows, setRows] = useState<GroupRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [formOpen, setFormOpen] = useState(false);
-  const [formSubmitting, setFormSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: "", description: "" });
+  // "Add" modal — kept simple and separate from the edit modal.
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addForm, setAddForm] = useState({ name: "", description: "" });
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Edit modal — opens for a single group, mirrors the client edit modal.
   const [bulkGroup, setBulkGroup] = useState<GroupRow | null>(null);
   const [pendingBulk, setPendingBulk] = useState<PendingBulk | null>(null);
   const [bulkWorking, setBulkWorking] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Inline sections inside the unified edit modal. Each "section" tracks only
-  // its own submit-busy flag; opening/closing follows bulkGroup.
+  const [form, setForm] = useState({ name: "", description: "" });
   const [hwidForm, setHwidForm] = useState({ maxHwid: 0, enabled: true });
-  const [hwidSubmitting, setHwidSubmitting] = useState(false);
+  const [hwidTouched, setHwidTouched] = useState(false);
+  const [ipForm, setIpForm] = useState({ maxIPs: 1, enabled: true });
+  const [ipTouched, setIpTouched] = useState(false);
+  const [trafficGB, setTrafficGB] = useState<number>(0);
+  const [trafficTouched, setTrafficTouched] = useState(false);
+  const [expiryValue, setExpiryValue] = useState<string>("");
+  const [expiryTouched, setExpiryTouched] = useState(false);
 
   const [inbounds, setInbounds] = useState<InboundOption[]>([]);
   const [inboundIds, setInboundIds] = useState<Record<number, boolean>>({});
-  // Ordered subset of inboundIds (true ones), preserving the order shown in subscriptions.
   const [inboundOrder, setInboundOrder] = useState<number[]>([]);
-  const [inboundSubmitting, setInboundSubmitting] = useState(false);
-
-  const [expiryValue, setExpiryValue] = useState<string>("");
-  const [expirySubmitting, setExpirySubmitting] = useState(false);
-
-  const [trafficGB, setTrafficGB] = useState<number>(0);
-  const [trafficSubmitting, setTrafficSubmitting] = useState(false);
-
-  const [ipForm, setIpForm] = useState({ maxIPs: 1, enabled: true });
-  const [ipSubmitting, setIpSubmitting] = useState(false);
+  const [inboundsTouched, setInboundsTouched] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,6 +200,8 @@ export function GroupsPage() {
           name: x.name ?? "",
           description: x.description ?? "",
           clientCount: x.clientCount ?? 0,
+          createdAt: x.createdAt,
+          updatedAt: x.updatedAt,
         })),
       );
     } else {
@@ -180,24 +234,33 @@ export function GroupsPage() {
   }, [bulkGroup, loadInbounds]);
 
   const openAdd = () => {
-    setEditingId(null);
-    setForm({ name: "", description: "" });
-    setFormOpen(true);
+    setAddForm({ name: "", description: "" });
+    setAddOpen(true);
   };
 
   const openEdit = (r: GroupRow) => {
-    setEditingId(r.id);
     setForm({ name: r.name, description: r.description });
     setHwidForm({ maxHwid: 0, enabled: true });
+    setHwidTouched(false);
     setIpForm({ maxIPs: 1, enabled: true });
+    setIpTouched(false);
     setTrafficGB(0);
+    setTrafficTouched(false);
     setExpiryValue("");
+    setExpiryTouched(false);
     setInboundIds({});
     setInboundOrder([]);
+    setInboundsTouched(false);
     setBulkGroup(r);
   };
 
+  const closeEdit = () => {
+    if (saving) return;
+    setBulkGroup(null);
+  };
+
   const toggleInboundId = (id: number) => {
+    setInboundsTouched(true);
     setInboundIds((prev) => {
       const next = { ...prev, [id]: !prev[id] };
       const isOn = next[id];
@@ -210,6 +273,7 @@ export function GroupsPage() {
   };
 
   const moveInboundOrder = (idx: number, dir: -1 | 1) => {
+    setInboundsTouched(true);
     setInboundOrder((order) => {
       const j = idx + dir;
       if (j < 0 || j >= order.length) return order;
@@ -222,64 +286,34 @@ export function GroupsPage() {
     });
   };
 
-  const submitForm = async () => {
-    const name = form.name.trim();
+  const submitAdd = async () => {
+    const name = addForm.name.trim();
     if (!name) {
       toast.error(t("pages.groups.enterGroupName"));
       return;
     }
-    setFormSubmitting(true);
+    setAddSubmitting(true);
     try {
-      const body = { name, description: form.description.trim() };
-      const r =
-        editingId == null
-          ? await postJson<unknown>(panel("group/add"), body, true)
-          : await postJson<unknown>(
-              panel(`group/update/${editingId}`),
-              body,
-              true,
-            );
+      const r = await postJson<unknown>(
+        panel("group/add"),
+        { name, description: addForm.description.trim() },
+        true,
+      );
       if (r.success) {
         toast.success(
-          (r as { msg?: string }).msg ||
-            t(
-              editingId == null
-                ? "pages.groups.addSuccess"
-                : "pages.groups.updateSuccess",
-            ),
+          (r as { msg?: string }).msg || t("pages.groups.addSuccess"),
         );
-        if (editingId == null) {
-          setFormOpen(false);
-        } else if (bulkGroup) {
-          // Sync the in-place row + title with the new name/description without closing the edit modal.
-          const updated: GroupRow = {
-            ...bulkGroup,
-            name: name,
-            description: form.description.trim(),
-          };
-          setBulkGroup(updated);
-        }
+        setAddOpen(false);
         void load();
       } else {
         toast.error(
-          (r as { msg?: string }).msg ||
-            t(
-              editingId == null
-                ? "pages.groups.addError"
-                : "pages.groups.updateError",
-            ),
+          (r as { msg?: string }).msg || t("pages.groups.addError"),
         );
       }
     } catch {
-      toast.error(
-        t(
-          editingId == null
-            ? "pages.groups.addError"
-            : "pages.groups.updateError",
-        ),
-      );
+      toast.error(t("pages.groups.addError"));
     } finally {
-      setFormSubmitting(false);
+      setAddSubmitting(false);
     }
   };
 
@@ -301,9 +335,9 @@ export function GroupsPage() {
     }
   };
 
-  const startBulkConfirm = (action: PendingBulk["action"], group: GroupRow) => {
-    setBulkGroup(null);
-    setPendingBulk({ action, group });
+  const startBulkConfirm = (action: PendingBulk["action"]) => {
+    if (!bulkGroup) return;
+    setPendingBulk({ action, group: bulkGroup });
   };
 
   const runPendingBulk = async () => {
@@ -315,13 +349,25 @@ export function GroupsPage() {
     try {
       switch (action) {
         case "reset":
-          r = await postJson<unknown>(panel(`group/${id}/bulk/resetTraffic`), {}, true);
+          r = await postJson<unknown>(
+            panel(`group/${id}/bulk/resetTraffic`),
+            {},
+            true,
+          );
           break;
         case "clearHwid":
-          r = await postJson<unknown>(panel(`group/${id}/bulk/clearHwid`), {}, true);
+          r = await postJson<unknown>(
+            panel(`group/${id}/bulk/clearHwid`),
+            {},
+            true,
+          );
           break;
         case "deleteAll":
-          r = await postJson<unknown>(panel(`group/${id}/bulk/delete`), {}, true);
+          r = await postJson<unknown>(
+            panel(`group/${id}/bulk/delete`),
+            {},
+            true,
+          );
           break;
         case "enable":
           r = await postJson<unknown>(
@@ -350,6 +396,12 @@ export function GroupsPage() {
         (r as { msg?: string }).msg || t("success", { defaultValue: "OK" }),
       );
       setPendingBulk(null);
+      if (action === "deleteAll") {
+        // The group itself stays — but every client is gone.
+        setBulkGroup((g) =>
+          g && g.id === id ? { ...g, clientCount: 0 } : g,
+        );
+      }
       void load();
     } else {
       toast.error(
@@ -359,132 +411,169 @@ export function GroupsPage() {
     }
   };
 
-  const submitHwid = async () => {
-    if (bulkGroup == null) return;
-    setHwidSubmitting(true);
-    try {
-      const r = await postJson<unknown>(
-        panel(`group/${bulkGroup.id}/bulk/setHwidLimit`),
-        {
-          maxHwid: Math.max(0, Math.floor(Number(hwidForm.maxHwid)) || 0),
-          enabled: hwidForm.enabled,
-        },
-        true,
-      );
-      if (r.success) {
-        toast.success((r as { msg?: string }).msg || t("success", { defaultValue: "OK" }));
-        void load();
-      } else {
-        toast.error((r as { msg?: string }).msg || t("fail", { defaultValue: "Error" }));
-      }
-    } catch {
-      toast.error(t("fail", { defaultValue: "Error" }));
-    } finally {
-      setHwidSubmitting(false);
-    }
-  };
-
-  const submitExpiry = async () => {
-    if (bulkGroup == null) return;
-    const ts = expiryValue ? new Date(expiryValue).getTime() : 0;
-    if (expiryValue && isNaN(ts)) {
-      toast.error(t("pages.groups.invalidDate", { defaultValue: "Invalid date" }));
+  /**
+   * Apply every section the user touched. Each section maps to its own bulk
+   * endpoint, but the user only sees a single Save button.
+   */
+  const submitAll = async () => {
+    if (!bulkGroup) return;
+    const name = form.name.trim();
+    if (!name) {
+      toast.error(t("pages.groups.enterGroupName"));
       return;
     }
-    setExpirySubmitting(true);
-    try {
-      const r = await postJson<unknown>(
-        panel(`group/${bulkGroup.id}/bulk/setExpiry`),
-        { expiryTime: ts },
-        true,
-      );
-      if (r.success) {
-        toast.success((r as { msg?: string }).msg || t("success", { defaultValue: "OK" }));
-        void load();
-      } else {
-        toast.error((r as { msg?: string }).msg || t("fail", { defaultValue: "Error" }));
-      }
-    } catch {
-      toast.error(t("fail", { defaultValue: "Error" }));
-    } finally {
-      setExpirySubmitting(false);
-    }
-  };
 
-  const submitTraffic = async () => {
-    if (bulkGroup == null) return;
-    setTrafficSubmitting(true);
-    try {
-      const r = await postJson<unknown>(
-        panel(`group/${bulkGroup.id}/bulk/setTrafficLimit`),
-        { totalGB: Math.max(0, trafficGB) },
-        true,
-      );
-      if (r.success) {
-        toast.success((r as { msg?: string }).msg || t("success", { defaultValue: "OK" }));
-        void load();
-      } else {
-        toast.error((r as { msg?: string }).msg || t("fail", { defaultValue: "Error" }));
-      }
-    } catch {
-      toast.error(t("fail", { defaultValue: "Error" }));
-    } finally {
-      setTrafficSubmitting(false);
+    const id = bulkGroup.id;
+    const nameChanged =
+      name !== bulkGroup.name ||
+      form.description.trim() !== bulkGroup.description;
+    const noClientChanges =
+      bulkGroup.clientCount < 1 ||
+      (!expiryTouched &&
+        !trafficTouched &&
+        !hwidTouched &&
+        !ipTouched &&
+        !inboundsTouched);
+    if (!nameChanged && noClientChanges) {
+      toast.error(t("pages.groups.noChangesToApply"));
+      return;
     }
-  };
 
-  const submitIP = async () => {
-    if (bulkGroup == null) return;
-    setIpSubmitting(true);
-    try {
-      const r = await postJson<unknown>(
-        panel(`group/${bulkGroup.id}/bulk/setIPLimit`),
-        { maxIPs: Math.max(0, ipForm.maxIPs), enabled: ipForm.enabled },
-        true,
-      );
-      if (r.success) {
-        toast.success((r as { msg?: string }).msg || t("success", { defaultValue: "OK" }));
-        void load();
-      } else {
-        toast.error((r as { msg?: string }).msg || t("fail", { defaultValue: "Error" }));
-      }
-    } catch {
-      toast.error(t("fail", { defaultValue: "Error" }));
-    } finally {
-      setIpSubmitting(false);
-    }
-  };
+    setSaving(true);
+    const errors: string[] = [];
 
-  const submitInbounds = async () => {
-    if (bulkGroup == null) return;
-    // Use the ordered list (subscription order) — backend persists slice order as sort_order.
-    const ordered = inboundOrder.filter((id) => inboundIds[id]);
-    setInboundSubmitting(true);
-    try {
-      const r = await postJson<unknown>(
-        panel(`group/${bulkGroup.id}/bulk/assignInbounds`),
-        { inboundIds: ordered, mode: "replace" },
-        true,
-      );
-      if (r.success) {
-        toast.success(
-          (r as { msg?: string }).msg || t("pages.groups.inboundsAssigned"),
+    const callBulk = async (
+      path: string,
+      body: unknown,
+      label: string,
+    ): Promise<boolean> => {
+      try {
+        const r = await postJson<unknown>(panel(path), body, true);
+        if (r.success) return true;
+        errors.push(
+          (r as { msg?: string }).msg || `${label}: ${t("fail", { defaultValue: "Error" })}`,
         );
-        void load();
-      } else {
-        toast.error(
-          (r as { msg?: string }).msg ||
-            t("fail", { defaultValue: "Error" }),
+        return false;
+      } catch {
+        errors.push(`${label}: ${t("fail", { defaultValue: "Error" })}`);
+        return false;
+      }
+    };
+
+    try {
+      if (nameChanged) {
+        await callBulk(
+          `group/update/${id}`,
+          { name, description: form.description.trim() },
+          t("pages.groups.editGroup"),
         );
       }
-    } catch {
-      toast.error(t("fail", { defaultValue: "Error" }));
+      if (expiryTouched && bulkGroup.clientCount > 0) {
+        const ts = expiryValue ? new Date(expiryValue).getTime() : 0;
+        if (expiryValue && isNaN(ts)) {
+          errors.push(
+            t("pages.groups.invalidDate", { defaultValue: "Invalid date" }),
+          );
+        } else {
+          await callBulk(
+            `group/${id}/bulk/setExpiry`,
+            { expiryTime: ts },
+            t("pages.groups.expiryDate", { defaultValue: "Expiry date" }),
+          );
+        }
+      }
+      if (trafficTouched && bulkGroup.clientCount > 0) {
+        await callBulk(
+          `group/${id}/bulk/setTrafficLimit`,
+          { totalGB: Math.max(0, Math.floor(trafficGB)) },
+          t("pages.groups.trafficLimitGB", {
+            defaultValue: "Traffic limit (GB)",
+          }),
+        );
+      }
+      if (hwidTouched && bulkGroup.clientCount > 0) {
+        await callBulk(
+          `group/${id}/bulk/setHwidLimit`,
+          {
+            maxHwid: Math.max(0, Math.floor(Number(hwidForm.maxHwid)) || 0),
+            enabled: hwidForm.enabled,
+          },
+          t("hwidSettings"),
+        );
+      }
+      if (ipTouched && bulkGroup.clientCount > 0) {
+        await callBulk(
+          `group/${id}/bulk/setIPLimit`,
+          {
+            maxIPs: Math.max(0, Math.floor(ipForm.maxIPs)) || 0,
+            enabled: ipForm.enabled,
+          },
+          t("pages.clients.ipLimitTitle", { defaultValue: "IP limit" }),
+        );
+      }
+      if (inboundsTouched && bulkGroup.clientCount > 0) {
+        const ordered = inboundOrder.filter((iid) => inboundIds[iid]);
+        await callBulk(
+          `group/${id}/bulk/assignInbounds`,
+          { inboundIds: ordered, mode: "replace" },
+          t("pages.groups.assignInbounds"),
+        );
+      }
     } finally {
-      setInboundSubmitting(false);
+      setSaving(false);
+    }
+
+    if (errors.length === 0) {
+      toast.success(
+        t("pages.groups.updateSuccess", {
+          defaultValue: "Group updated successfully",
+        }),
+      );
+      // Keep the modal open for further tweaks, but reset "touched" markers and
+      // reflect the new group name/description in the open header.
+      if (bulkGroup) {
+        setBulkGroup({
+          ...bulkGroup,
+          name,
+          description: form.description.trim(),
+        });
+      }
+      setExpiryTouched(false);
+      setTrafficTouched(false);
+      setHwidTouched(false);
+      setIpTouched(false);
+      setInboundsTouched(false);
+      void load();
+    } else {
+      toast.error(errors.join("\n"));
+      void load();
     }
   };
 
-  const isEdit = editingId != null;
+  const hasPendingChanges = useMemo(() => {
+    if (!bulkGroup) return false;
+    const name = form.name.trim();
+    const nameChanged =
+      name !== bulkGroup.name ||
+      form.description.trim() !== bulkGroup.description;
+    return (
+      nameChanged ||
+      expiryTouched ||
+      trafficTouched ||
+      hwidTouched ||
+      ipTouched ||
+      inboundsTouched
+    );
+  }, [
+    bulkGroup,
+    form.name,
+    form.description,
+    expiryTouched,
+    trafficTouched,
+    hwidTouched,
+    ipTouched,
+    inboundsTouched,
+  ]);
 
   return (
     <PageScaffold compact>
@@ -502,443 +591,535 @@ export function GroupsPage() {
         }
       />
       <Reveal>
-      <Surface padding="none" className="overflow-hidden">
-        {loading && !rows.length ? (
-          <div className="grid min-h-48 place-items-center">
-            <Spinner size={32} />
-          </div>
-        ) : !rows.length ? (
-          <div className="grid min-h-48 place-items-center px-4 py-12">
-            <div className="flex flex-col items-center gap-3 text-center">
-              <IconTile icon={Building2} tone="neutral" size="lg" />
-              <p className="text-sm text-[var(--fg-muted)]">{t("noData")}</p>
+        <Surface padding="none" className="overflow-hidden">
+          {loading && !rows.length ? (
+            <div className="grid min-h-48 place-items-center">
+              <Spinner size={32} />
             </div>
-          </div>
-        ) : (
-          <div className="panel-data-table overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-subtle)]">
-                  <th className="p-3">{t("pages.groups.name")}</th>
-                  <th className="p-3">{t("pages.groups.groupDescription")}</th>
-                  <th className="p-3">{t("pages.groups.clientCount")}</th>
-                  <th className="p-3 w-44">{t("pages.groups.operate")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="border-b border-[var(--border)] text-[var(--fg-muted)] hover:bg-[color-mix(in_oklab,var(--accent)_5%,transparent)]"
-                  >
-                    <td className="p-3 text-[var(--fg)]">{r.name}</td>
-                    <td
-                      className="p-3 max-w-[240px] truncate"
-                      title={r.description}
-                    >
-                      {r.description || "—"}
-                    </td>
-                      <td className="p-3 font-mono text-xs">{t("pages.groups.clientDisplay", { count: r.clientCount })}</td>
-                    <td className="p-3">
-                      <div className="flex flex-wrap gap-1">
-                        <Button
-                          variant="secondary"
-                          className="!p-2"
-                          onClick={() => openEdit(r)}
-                          aria-label={t("pages.groups.editGroup")}
-                          title={t("pages.groups.editGroup")}
-                        >
-                          <Pencil size={16} />
-                        </Button>
-                        <Button
-                          variant="danger"
-                          className="!p-2"
-                          onClick={() => setDeleteId(r.id)}
-                          aria-label={t("delete")}
-                        >
-                          <Trash2 size={16} />
-                        </Button>
-                      </div>
-                    </td>
+          ) : !rows.length ? (
+            <div className="grid min-h-48 place-items-center px-4 py-12">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <IconTile icon={Building2} tone="neutral" size="lg" />
+                <p className="text-sm text-[var(--fg-muted)]">{t("noData")}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="panel-data-table overflow-x-auto">
+              <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-subtle)]">
+                    <th className="p-3">{t("pages.groups.name")}</th>
+                    <th className="p-3">{t("pages.groups.groupDescription")}</th>
+                    <th className="p-3">{t("pages.groups.clientCount")}</th>
+                    <th className="p-3 w-44">{t("pages.groups.operate")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Surface>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.id}
+                      className="border-b border-[var(--border)] text-[var(--fg-muted)] hover:bg-[color-mix(in_oklab,var(--accent)_5%,transparent)]"
+                    >
+                      <td className="p-3 text-[var(--fg)]">{r.name}</td>
+                      <td
+                        className="p-3 max-w-[240px] truncate"
+                        title={r.description}
+                      >
+                        {r.description || "—"}
+                      </td>
+                      <td className="p-3 font-mono text-xs">
+                        {t("pages.groups.clientDisplay", {
+                          count: r.clientCount,
+                        })}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            variant="secondary"
+                            className="!p-2"
+                            onClick={() => openEdit(r)}
+                            aria-label={t("pages.groups.editGroup")}
+                            title={t("pages.groups.editGroup")}
+                          >
+                            <Pencil size={16} />
+                          </Button>
+                          <Button
+                            variant="danger"
+                            className="!p-2"
+                            onClick={() => setDeleteId(r.id)}
+                            aria-label={t("delete")}
+                          >
+                            <Trash2 size={16} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Surface>
       </Reveal>
 
+      {/* Edit modal — mirrors the client edit modal for a familiar UX. */}
       <Modal
         open={bulkGroup != null}
-        onClose={() => {
-          setBulkGroup(null);
-          setEditingId(null);
-        }}
+        onClose={closeEdit}
         title={
           bulkGroup
-            ? `${t("pages.groups.editGroup")} — ${bulkGroup.name}`
-            : t("pages.groups.editGroup")
+            ? `${t("pages.groups.editGroupTitle", { defaultValue: "Edit group" })} — ${bulkGroup.name}`
+            : t("pages.groups.editGroupTitle", { defaultValue: "Edit group" })
         }
-        width={560}
-        footer={
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={() => {
-              setBulkGroup(null);
-              setEditingId(null);
-            }}
-          >
-            {t("close")}
-          </Button>
-        }
-      >
-        {bulkGroup ? (
-          <div className="flex flex-col gap-4 text-sm">
-            <p className="text-xs text-[var(--fg-muted)]">
-              {t("pages.groups.clientDisplay", { count: bulkGroup.clientCount })}
-            </p>
-
-            {/* General — group metadata */}
-            {editingId === bulkGroup.id ? (
-              <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
-                  {t("pages.groups.sectionGeneral", { defaultValue: "General" })}
-                </p>
-                <div className="space-y-2">
-                  <div>
-                    <label className="mb-1 block text-xs text-[var(--fg-muted)]" htmlFor="grp-edit-name">
-                      {t("pages.groups.groupName")}
-                    </label>
-                    <Input
-                      id="grp-edit-name"
-                      value={form.name}
-                      maxLength={30}
-                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-[var(--fg-muted)]" htmlFor="grp-edit-desc">
-                      {t("pages.groups.groupDescription")}
-                    </label>
-                    <TextArea
-                      id="grp-edit-desc"
-                      value={form.description}
-                      onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                    />
-                  </div>
-                  <div className="flex justify-end">
-                    <Button
-                      variant="primary"
-                      type="button"
-                      loading={formSubmitting}
-                      onClick={() => void submitForm()}
-                    >
-                      {t("save", { defaultValue: "Save" })}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Limits — inline forms with per-row Apply button */}
-            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
-                {t("pages.groups.sectionLimits", { defaultValue: "Limits" })}
-              </p>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                {/* Expiry */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs text-[var(--fg-muted)]" htmlFor="grp-expiry">
-                    {t("pages.groups.bulkSetExpiry", { defaultValue: "Set expiry date" })}
-                  </label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="grp-expiry"
-                      type="datetime-local"
-                      value={expiryValue}
-                      onChange={(e) => setExpiryValue(e.target.value)}
-                    />
-                    <Button
-                      variant="secondary"
-                      type="button"
-                      loading={expirySubmitting}
-                      disabled={bulkGroup.clientCount < 1}
-                      onClick={() => void submitExpiry()}
-                    >
-                      {t("apply")}
-                    </Button>
-                  </div>
-                  <p className="text-[11px] text-[var(--fg-subtle)]">
-                    {t("pages.groups.expiryDate", { defaultValue: "Leave blank for unlimited" })}
-                  </p>
-                </div>
-
-                {/* Traffic limit */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs text-[var(--fg-muted)]" htmlFor="grp-traffic">
-                    {t("pages.groups.bulkSetTrafficLimit", { defaultValue: "Set traffic limit" })}
-                  </label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="grp-traffic"
-                      type="number"
-                      min={0}
-                      step={0.1}
-                      value={String(trafficGB)}
-                      onChange={(e) => setTrafficGB(Math.max(0, parseFloat(e.target.value) || 0))}
-                    />
-                    <Button
-                      variant="secondary"
-                      type="button"
-                      loading={trafficSubmitting}
-                      disabled={bulkGroup.clientCount < 1}
-                      onClick={() => void submitTraffic()}
-                    >
-                      {t("apply")}
-                    </Button>
-                  </div>
-                  <p className="text-[11px] text-[var(--fg-subtle)]">
-                    {t("pages.groups.trafficLimitGB", { defaultValue: "GB (0 = unlimited)" })}
-                  </p>
-                </div>
-
-                {/* HWID limit */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs text-[var(--fg-muted)]" htmlFor="grp-hwid">
-                    {t("pages.groups.bulkSetHwidLimit")}
-                  </label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="grp-hwid"
-                      type="number"
-                      min={0}
-                      value={String(hwidForm.maxHwid)}
-                      onChange={(e) =>
-                        setHwidForm((f) => ({ ...f, maxHwid: Math.max(0, Number(e.target.value) || 0) }))
-                      }
-                    />
-                    <Button
-                      variant="secondary"
-                      type="button"
-                      loading={hwidSubmitting}
-                      disabled={bulkGroup.clientCount < 1}
-                      onClick={() => void submitHwid()}
-                    >
-                      {t("apply")}
-                    </Button>
-                  </div>
-                  <CheckboxField
-                    checked={hwidForm.enabled}
-                    onChange={(e) => setHwidForm((f) => ({ ...f, enabled: e.target.checked }))}
-                    label={t("pages.groups.hwidLimitEnabled")}
-                  />
-                </div>
-
-                {/* IP limit */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs text-[var(--fg-muted)]" htmlFor="grp-ip">
-                    {t("pages.groups.bulkSetIPLimit", { defaultValue: "Set IP limit" })}
-                  </label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="grp-ip"
-                      type="number"
-                      min={0}
-                      value={String(ipForm.maxIPs)}
-                      onChange={(e) =>
-                        setIpForm((f) => ({ ...f, maxIPs: Math.max(0, Number(e.target.value) || 0) }))
-                      }
-                    />
-                    <Button
-                      variant="secondary"
-                      type="button"
-                      loading={ipSubmitting}
-                      disabled={bulkGroup.clientCount < 1}
-                      onClick={() => void submitIP()}
-                    >
-                      {t("apply")}
-                    </Button>
-                  </div>
-                  <CheckboxField
-                    checked={ipForm.enabled}
-                    onChange={(e) => setIpForm((f) => ({ ...f, enabled: e.target.checked }))}
-                    label={t("pages.groups.ipLimitEnabled", { defaultValue: "Enable IP limit" })}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Inbounds — capsule chips + order list, like the client modal */}
-            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
-                {t("pages.groups.assignInbounds")}
-              </p>
-              {inbounds.length === 0 ? (
-                <p className="text-xs text-[var(--fg-subtle)]">{t("noData")}</p>
-              ) : (
-                <>
-                  <div className="max-h-52 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
-                    <div className="flex flex-wrap gap-2" role="group">
-                      {inbounds.map((ib) => (
-                        <GroupInboundCapsule
-                          key={ib.id}
-                          selected={!!inboundIds[ib.id]}
-                          onToggle={() => toggleInboundId(ib.id)}
-                          label={ib.remark}
-                          sublabel={`${ib.protocol} · ${ib.port}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  {inboundOrder.length >= 2 ? (
-                    <div className="space-y-2 border-t border-[var(--border)] pt-3">
-                      <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--fg-subtle)]">
-                        {t("pages.clients.subscriptionInboundOrder", {
-                          defaultValue: "Subscription order",
-                        })}
-                      </p>
-                      {inboundOrder.map((iid, idx) => {
-                        const ib = inbounds.find((x) => x.id === iid);
-                        const label = ib?.remark || `Inbound ${iid}`;
-                        return (
-                          <div
-                            key={iid}
-                            className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5"
-                          >
-                            <span className="min-w-0 flex-1 truncate text-xs text-[var(--fg)]">{label}</span>
-                            <Button
-                              variant="secondary"
-                              type="button"
-                              className="!p-1.5"
-                              aria-label={t("pages.clients.moveInboundUp", { defaultValue: "Move up" })}
-                              disabled={idx === 0}
-                              onClick={() => moveInboundOrder(idx, -1)}
-                            >
-                              <ArrowUp size={14} />
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              type="button"
-                              className="!p-1.5"
-                              aria-label={t("pages.clients.moveInboundDown", { defaultValue: "Move down" })}
-                              disabled={idx >= inboundOrder.length - 1}
-                              onClick={() => moveInboundOrder(idx, 1)}
-                            >
-                              <ArrowDown size={14} />
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                  <p className="text-[11px] text-[var(--fg-subtle)]">
-                    {t("pages.groups.assignInboundsHint")}
-                  </p>
-                  <div className="flex justify-end">
-                    <Button
-                      variant="primary"
-                      type="button"
-                      loading={inboundSubmitting}
-                      disabled={bulkGroup.clientCount < 1}
-                      onClick={() => void submitInbounds()}
-                    >
-                      {t("pages.groups.assign")}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Status */}
-            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
-                {t("pages.groups.sectionStatus", { defaultValue: "Status" })}
-              </p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => startBulkConfirm("enable", bulkGroup)}
-                  disabled={bulkGroup.clientCount < 1}
-                >
-                  {t("pages.groups.bulkEnableAll")}
-                </Button>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => startBulkConfirm("disable", bulkGroup)}
-                  disabled={bulkGroup.clientCount < 1}
-                >
-                  {t("pages.groups.bulkDisableAll")}
-                </Button>
-              </div>
-            </div>
-
-            {/* Maintenance */}
-            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
-                {t("pages.groups.sectionMaintenance", { defaultValue: "Maintenance" })}
-              </p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => startBulkConfirm("reset", bulkGroup)}
-                  disabled={bulkGroup.clientCount < 1}
-                >
-                  {t("pages.groups.bulkResetTraffic")}
-                </Button>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => startBulkConfirm("clearHwid", bulkGroup)}
-                  disabled={bulkGroup.clientCount < 1}
-                >
-                  {t("pages.groups.bulkClearHwid")}
-                </Button>
-              </div>
-            </div>
-
-            <Button
-              variant="danger"
-              className="w-full"
-              type="button"
-              onClick={() => startBulkConfirm("deleteAll", bulkGroup)}
-              disabled={bulkGroup.clientCount < 1}
-            >
-              {t("pages.groups.deleteClients")}
-            </Button>
-          </div>
-        ) : null}
-      </Modal>
-
-      <Modal
-        open={formOpen}
-        onClose={() => {
-          if (!formSubmitting) setFormOpen(false);
-        }}
-        title={isEdit ? t("pages.groups.editGroup") : t("pages.groups.addGroup")}
-        width={480}
+        width={960}
         footer={
           <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="secondary"
               type="button"
-              disabled={formSubmitting}
-              onClick={() => setFormOpen(false)}
+              disabled={saving}
+              onClick={closeEdit}
             >
               {t("cancel")}
             </Button>
             <Button
               variant="primary"
               type="button"
-              loading={formSubmitting}
-              onClick={() => void submitForm()}
+              loading={saving}
+              disabled={!hasPendingChanges}
+              onClick={() => void submitAll()}
             >
-              {isEdit ? t("save") : t("create")}
+              {t("save", { defaultValue: "Save" })}
+            </Button>
+          </div>
+        }
+      >
+        {bulkGroup ? (
+          <div
+            className={
+              "relative flex flex-col overflow-visible rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm"
+            }
+          >
+            <div className="flex flex-col gap-4 p-5">
+              {/* --- Header strip: state hint + action icons --- */}
+              <div className="space-y-3 border-b border-[var(--border)] pb-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <p className="text-xs text-[var(--fg-subtle)]">
+                      {t("pages.groups.editHintAppliesToAll", {
+                        defaultValue:
+                          "Changes here will be applied to every client in this group.",
+                      })}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center justify-end gap-0.5 lg:pt-0.5">
+                    <IconButton
+                      type="button"
+                      label={t("pages.groups.actionEnableAll", {
+                        defaultValue: "Enable all clients",
+                      })}
+                      disabled={bulkGroup.clientCount < 1 || bulkWorking}
+                      className="!text-emerald-600 hover:!text-emerald-700 dark:!text-emerald-400 dark:hover:!text-emerald-300"
+                      onClick={() => startBulkConfirm("enable")}
+                    >
+                      <Power size={18} />
+                    </IconButton>
+                    <IconButton
+                      type="button"
+                      label={t("pages.groups.actionDisableAll", {
+                        defaultValue: "Disable all clients",
+                      })}
+                      disabled={bulkGroup.clientCount < 1 || bulkWorking}
+                      onClick={() => startBulkConfirm("disable")}
+                    >
+                      <ShieldOff size={18} />
+                    </IconButton>
+                    <IconButton
+                      type="button"
+                      label={t("pages.groups.actionResetTraffic", {
+                        defaultValue: "Reset traffic for all clients",
+                      })}
+                      disabled={bulkGroup.clientCount < 1 || bulkWorking}
+                      onClick={() => startBulkConfirm("reset")}
+                    >
+                      <RotateCcw size={18} />
+                    </IconButton>
+                    <IconButton
+                      type="button"
+                      label={t("pages.groups.actionClearHwid", {
+                        defaultValue: "Clear HWID for all clients",
+                      })}
+                      disabled={bulkGroup.clientCount < 1 || bulkWorking}
+                      onClick={() => startBulkConfirm("clearHwid")}
+                    >
+                      <Shield size={18} />
+                    </IconButton>
+                    <IconButton
+                      type="button"
+                      label={t("pages.groups.actionDeleteAll", {
+                        defaultValue: "Delete all clients in group",
+                      })}
+                      disabled={bulkGroup.clientCount < 1 || bulkWorking}
+                      className="!text-red-600 hover:!text-red-700 dark:!text-red-400 dark:hover:!text-red-300"
+                      onClick={() => startBulkConfirm("deleteAll")}
+                    >
+                      <Trash2 size={18} />
+                    </IconButton>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {/* === LEFT column: identity + group data === */}
+                <div className="space-y-5 text-sm">
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+                    <SectionLabel icon={User}>
+                      {t("pages.groups.sectionIdentity", {
+                        defaultValue: "Identification",
+                      })}
+                    </SectionLabel>
+                    <div className="space-y-4">
+                      <div>
+                        <label
+                          className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]"
+                          htmlFor="grp-edit-name"
+                        >
+                          {t("pages.groups.groupName", {
+                            defaultValue: "Group name",
+                          })}{" "}
+                          *
+                        </label>
+                        <Input
+                          id="grp-edit-name"
+                          value={form.name}
+                          maxLength={30}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              name: e.target.value.slice(0, 30),
+                            }))
+                          }
+                          placeholder={t("pages.groups.enterGroupName")}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]"
+                          htmlFor="grp-edit-desc"
+                        >
+                          {t("pages.groups.groupDescription")}
+                        </label>
+                        <TextArea
+                          id="grp-edit-desc"
+                          value={form.description}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              description: e.target.value,
+                            }))
+                          }
+                          placeholder={t(
+                            "pages.groups.enterGroupDescription",
+                          )}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+                    <SectionLabel icon={Clock}>
+                      {t("pages.groups.sectionGroupData", {
+                        defaultValue: "Group data",
+                      })}
+                    </SectionLabel>
+                    <ul className="space-y-2.5 text-xs">
+                      <li className="flex flex-wrap justify-between gap-2">
+                        <span className="text-[var(--fg-muted)]">
+                          {t("pages.groups.dataClientCount", {
+                            defaultValue: "Clients in group",
+                          })}
+                        </span>
+                        <span className="text-[var(--fg)]">
+                          {t("pages.groups.clientDisplay", {
+                            count: bulkGroup.clientCount,
+                          })}
+                        </span>
+                      </li>
+                      <li className="flex flex-wrap justify-between gap-2">
+                        <span className="text-[var(--fg-muted)]">
+                          {t("pages.groups.dataCreated", {
+                            defaultValue: "Created",
+                          })}
+                        </span>
+                        <span className="text-[var(--fg)]">
+                          {formatGroupDateTime(bulkGroup.createdAt, "—")}
+                        </span>
+                      </li>
+                      <li className="flex flex-wrap justify-between gap-2">
+                        <span className="text-[var(--fg-muted)]">
+                          {t("pages.groups.dataUpdated", {
+                            defaultValue: "Updated",
+                          })}
+                        </span>
+                        <span className="text-[var(--fg)]">
+                          {formatGroupDateTime(bulkGroup.updatedAt, "—")}
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* === RIGHT column: expiry, traffic, inbounds, HWID, IP === */}
+                <div className="space-y-5 text-sm">
+                  {/* Expiry */}
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+                    <SectionLabel icon={Calendar}>
+                      {t("pages.groups.expiryDate", {
+                        defaultValue: "Expiry date",
+                      })}
+                    </SectionLabel>
+                    <Input
+                      id="grp-expiry"
+                      type="datetime-local"
+                      value={expiryValue}
+                      onChange={(e) => {
+                        setExpiryTouched(true);
+                        setExpiryValue(e.target.value);
+                      }}
+                    />
+                    <p className="mt-1 text-xs text-[var(--fg-subtle)]">
+                      {t("pages.groups.expiryHint", {
+                        defaultValue: "Leave blank for unlimited",
+                      })}
+                    </p>
+                  </div>
+
+                  {/* Traffic */}
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+                    <SectionLabel icon={Activity}>
+                      {t("pages.groups.trafficLimitGB", {
+                        defaultValue: "Traffic limit (GB)",
+                      })}
+                    </SectionLabel>
+                    <Input
+                      id="grp-traffic"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={String(trafficGB)}
+                      onChange={(e) => {
+                        setTrafficTouched(true);
+                        setTrafficGB(
+                          Math.max(0, parseFloat(e.target.value) || 0),
+                        );
+                      }}
+                    />
+                    <p className="mt-1 text-xs text-[var(--fg-subtle)]">
+                      {t("pages.groups.trafficLimitHint", {
+                        defaultValue: "0 = unlimited",
+                      })}
+                    </p>
+                  </div>
+
+                  {/* Inbounds */}
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+                    <SectionLabel icon={Layers}>
+                      {t("pages.groups.assignInbounds")}
+                    </SectionLabel>
+                    {inbounds.length === 0 ? (
+                      <p className="text-xs text-[var(--fg-subtle)]">
+                        {t("noData")}
+                      </p>
+                    ) : (
+                      <div className="max-h-52 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
+                        <div
+                          className="flex flex-wrap gap-2"
+                          role="group"
+                          aria-label={t("pages.groups.assignInbounds")}
+                        >
+                          {inbounds.map((ib) => (
+                            <GroupInboundCapsule
+                              key={ib.id}
+                              selected={!!inboundIds[ib.id]}
+                              onToggle={() => toggleInboundId(ib.id)}
+                              label={ib.remark}
+                              sublabel={`${ib.protocol} · ${ib.port}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {inboundOrder.length >= 2 ? (
+                      <div className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
+                        <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--fg-subtle)]">
+                          {t("pages.clients.subscriptionInboundOrder", {
+                            defaultValue: "Subscription order",
+                          })}
+                        </p>
+                        {inboundOrder.map((iid, idx) => {
+                          const ib = inbounds.find((x) => x.id === iid);
+                          const label =
+                            ib?.remark?.trim() || `Inbound ${iid}`;
+                          return (
+                            <div
+                              key={iid}
+                              className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5"
+                            >
+                              <span className="min-w-0 flex-1 truncate text-xs text-[var(--fg)]">
+                                {label}
+                              </span>
+                              <IconButton
+                                type="button"
+                                label={t("pages.clients.moveInboundUp", {
+                                  defaultValue: "Move up",
+                                })}
+                                disabled={idx === 0}
+                                onClick={() => moveInboundOrder(idx, -1)}
+                              >
+                                <ArrowUp size={14} />
+                              </IconButton>
+                              <IconButton
+                                type="button"
+                                label={t("pages.clients.moveInboundDown", {
+                                  defaultValue: "Move down",
+                                })}
+                                disabled={idx >= inboundOrder.length - 1}
+                                onClick={() => moveInboundOrder(idx, 1)}
+                              >
+                                <ArrowDown size={14} />
+                              </IconButton>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    <p className="mt-2 text-xs text-[var(--fg-subtle)]">
+                      {t("pages.groups.assignInboundsHint")}
+                    </p>
+                  </div>
+
+                  {/* HWID */}
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+                    <SectionLabel icon={Shield}>
+                      {t("hwidSettings")}
+                    </SectionLabel>
+                    <CheckboxField
+                      checked={hwidForm.enabled}
+                      onChange={(e) => {
+                        setHwidTouched(true);
+                        setHwidForm((f) => ({ ...f, enabled: e.target.checked }));
+                      }}
+                      label={t("hwidEnabled")}
+                    />
+                    <div className="mt-3">
+                      <label
+                        className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]"
+                        htmlFor="grp-hwid"
+                      >
+                        {t("maxHwid")}
+                      </label>
+                      <Input
+                        id="grp-hwid"
+                        type="number"
+                        min={0}
+                        step={1}
+                        disabled={!hwidForm.enabled}
+                        value={String(hwidForm.maxHwid)}
+                        onChange={(e) => {
+                          setHwidTouched(true);
+                          setHwidForm((f) => ({
+                            ...f,
+                            maxHwid: Math.max(
+                              0,
+                              Math.floor(Number(e.target.value) || 0),
+                            ),
+                          }));
+                        }}
+                      />
+                      <p className="mt-1 text-xs text-[var(--fg-subtle)]">
+                        {t("pages.clients.maxHwidDesc")}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* IP Limit */}
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+                    <SectionLabel icon={Users}>
+                      {t("pages.clients.ipLimitTitle", {
+                        defaultValue: "IP limit",
+                      })}
+                    </SectionLabel>
+                    <CheckboxField
+                      checked={ipForm.enabled}
+                      onChange={(e) => {
+                        setIpTouched(true);
+                        setIpForm((f) => ({ ...f, enabled: e.target.checked }));
+                      }}
+                      label={t("pages.groups.ipLimitEnabled", {
+                        defaultValue: "Limit concurrent IPs",
+                      })}
+                    />
+                    <div className="mt-3">
+                      <label
+                        className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]"
+                        htmlFor="grp-ip"
+                      >
+                        {t("pages.groups.maxIPs", {
+                          defaultValue: "Max unique IPs",
+                        })}
+                      </label>
+                      <Input
+                        id="grp-ip"
+                        type="number"
+                        min={0}
+                        disabled={!ipForm.enabled}
+                        value={String(ipForm.maxIPs)}
+                        onChange={(e) => {
+                          setIpTouched(true);
+                          setIpForm((f) => ({
+                            ...f,
+                            maxIPs: Math.max(
+                              0,
+                              Math.floor(Number(e.target.value) || 0),
+                            ),
+                          }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      {/* "Add group" modal — minimal name + description. */}
+      <Modal
+        open={addOpen}
+        onClose={() => {
+          if (!addSubmitting) setAddOpen(false);
+        }}
+        title={t("pages.groups.addGroup")}
+        width={480}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={addSubmitting}
+              onClick={() => setAddOpen(false)}
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              type="button"
+              loading={addSubmitting}
+              onClick={() => void submitAdd()}
+            >
+              {t("create")}
             </Button>
           </div>
         }
@@ -949,13 +1130,16 @@ export function GroupsPage() {
               className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]"
               htmlFor="grp-name"
             >
-              {t("pages.groups.name")} *
+              {t("pages.groups.groupName", { defaultValue: "Group name" })} *
             </label>
             <Input
               id="grp-name"
-              value={form.name}
+              value={addForm.name}
               onChange={(e) =>
-                setForm((f) => ({ ...f, name: e.target.value.slice(0, 30) }))
+                setAddForm((f) => ({
+                  ...f,
+                  name: e.target.value.slice(0, 30),
+                }))
               }
               placeholder={t("pages.groups.enterGroupName")}
               maxLength={30}
@@ -971,16 +1155,15 @@ export function GroupsPage() {
             </label>
             <TextArea
               id="grp-desc"
-              value={form.description}
+              value={addForm.description}
               onChange={(e) =>
-                setForm((f) => ({ ...f, description: e.target.value }))
+                setAddForm((f) => ({ ...f, description: e.target.value }))
               }
               placeholder={t("pages.groups.enterGroupDescription")}
             />
           </div>
         </div>
       </Modal>
-
 
       <ConfirmDialog
         open={deleteId != null}
