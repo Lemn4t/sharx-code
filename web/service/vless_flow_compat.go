@@ -36,13 +36,19 @@ func VLESSEffectiveFlow(inboundSettingsJSON, streamSettingsJSON string, protocol
 	return VLESSFlowFromInboundSettings(inboundSettingsJSON)
 }
 
-// SanitizeVLESSFlowInInboundSettings clears settings.clients[].flow when XTLS flow is incompatible
-// with the inbound transport (e.g. XHTTP, WS). Call before persisting VLESS inbounds.
+// SanitizeVLESSFlowInInboundSettings enforces a single consistent flow value across all
+// settings.clients[] entries. Call before persisting VLESS inbounds.
+//
+// The effective flow is determined as follows:
+//  1. If XTLS flow is not allowed for this transport → clear all clients' flow.
+//  2. Otherwise use settings.clients[0].flow as the authoritative value (this is what
+//     the panel form always writes when the user changes the flow selector), then
+//     propagate that value to every other client entry. This prevents stale non-empty
+//     flow values in clients[1..N] from overriding an explicit "None" selection in the UI.
 func SanitizeVLESSFlowInInboundSettings(inbound *model.Inbound) {
 	if inbound == nil || model.NormalizeProtocol(inbound.Protocol) != model.VLESS {
 		return
 	}
-	effective := VLESSEffectiveFlow(inbound.Settings, inbound.StreamSettings, inbound.Protocol)
 	settingsJSON := strings.TrimSpace(inbound.Settings)
 	if settingsJSON == "" || settingsJSON == "{}" {
 		return
@@ -55,6 +61,19 @@ func SanitizeVLESSFlowInInboundSettings(inbound *model.Inbound) {
 	if !ok || len(rawClients) == 0 {
 		return
 	}
+
+	// Determine effective flow:
+	// - If transport disallows XTLS → always empty.
+	// - Otherwise: use clients[0].flow (the value the form just wrote).
+	var effective string
+	if VLESSXTLSFlowAllowed(inbound.Protocol, inbound.StreamSettings, inbound.Settings) {
+		if cm0, ok := rawClients[0].(map[string]any); ok {
+			effective, _ = cm0["flow"].(string)
+			effective = strings.TrimSpace(effective)
+		}
+	}
+
+	// Apply effective to ALL clients.
 	changed := false
 	for i, cl := range rawClients {
 		cm, ok := cl.(map[string]any)

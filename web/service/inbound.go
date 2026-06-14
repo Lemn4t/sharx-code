@@ -313,9 +313,11 @@ func (s *InboundService) GetClients(inbound *model.Inbound) ([]model.Client, err
 	return clients, nil
 }
 
-// VLESSFlowFromInboundSettings returns VLESS flow only from the inbound's settings JSON
-// (settings.clients[0].flow, else the first non-empty flow in settings.clients). Per-client
-// flow on ClientEntity is not a source; it is kept in sync from assigned inbounds in ClientService.
+// VLESSFlowFromInboundSettings returns the effective VLESS flow from the inbound's settings JSON.
+// Only settings.clients[0].flow is read: it is the canonical value written by the panel form and
+// propagated to all other clients by SanitizeVLESSFlowInInboundSettings. Scanning further clients
+// for a non-empty fallback caused the "flow cannot be set back to None" bug when clients[1..N]
+// still held stale xtls-rprx-vision values.
 func VLESSFlowFromInboundSettings(inboundSettings string) string {
 	if strings.TrimSpace(inboundSettings) == "" {
 		return ""
@@ -328,23 +330,8 @@ func VLESSFlowFromInboundSettings(inboundSettings string) string {
 	if len(clients) > 0 {
 		if cm, ok := clients[0].(map[string]any); ok {
 			if f, ok := cm["flow"].(string); ok {
-				if t := strings.TrimSpace(f); t != "" {
-					return t
-				}
+				return strings.TrimSpace(f)
 			}
-		}
-	}
-	for _, c := range clients {
-		cm, ok := c.(map[string]any)
-		if !ok {
-			continue
-		}
-		f, ok := cm["flow"].(string)
-		if !ok {
-			continue
-		}
-		if t := strings.TrimSpace(f); t != "" {
-			return t
 		}
 	}
 	return ""
