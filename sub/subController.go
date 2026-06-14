@@ -163,6 +163,15 @@ func (a *SUBController) subs(c *gin.Context) {
 	// encrypted base64, other known apps → base64 / YAML / JSON).
 	uaClient, uaFormat := DispatchByUA(c)
 
+	// ?format= query parameter overrides UA-based detection.
+	// Supported values: clash, clash-meta, mihomo → FormatClashYAML.
+	if fmtParam := strings.ToLower(strings.TrimSpace(c.Query("format"))); fmtParam != "" {
+		switch fmtParam {
+		case "clash", "clash-meta", "mihomo":
+			uaFormat = FormatClashYAML
+		}
+	}
+
 	if uaFormat == FormatRedirectUI || uaClient == UABrowser {
 		ss := service.SettingService{}
 		tls := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
@@ -232,10 +241,18 @@ func (a *SUBController) subs(c *gin.Context) {
 	switch uaFormat {
 	case FormatBase64:
 		c.String(200, base64.StdEncoding.EncodeToString([]byte(result)))
-	case FormatClashYAML, FormatSIP008, FormatXrayJSON:
-		// Fallback: Clash / SIP008 / Xray-JSON native formats are not yet
-		// generated inline here. Send base64 so the client still gets a
-		// valid subscription; advertise the intended format for debugging.
+	case FormatClashYAML:
+		// Convert subscription links to Clash YAML; send raw (no base64).
+		yamlBody, err := LinksToClashYAML(subs)
+		if err != nil {
+			logger.Warningf("Clash YAML conversion failed for subId %s: %v", subId, err)
+			c.String(500, "internal error")
+			return
+		}
+		c.Writer.Header().Set("Content-Type", "text/yaml; charset=utf-8")
+		c.String(200, yamlBody)
+	case FormatSIP008, FormatXrayJSON:
+		// Fallback: send base64; advertise intended format for debugging.
 		c.Writer.Header().Set("X-Subscription-Preferred-Format", string(uaFormat))
 		c.String(200, base64.StdEncoding.EncodeToString([]byte(result)))
 	default:
