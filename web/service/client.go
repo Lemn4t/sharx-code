@@ -288,7 +288,8 @@ func (s *ClientService) xrayUserPayloadForInbound(client *model.ClientEntity, in
 		var settings map[string]interface{}
 		json.Unmarshal([]byte(inbound.Settings), &settings)
 		if method, ok := settings["method"].(string); ok {
-			clientData["method"] = method
+			// Xray gRPC AddUser payload uses "cipher" key (not "method").
+			clientData["cipher"] = method
 		}
 		clientData["password"] = client.Password
 	case model.VMESS, model.VLESS:
@@ -918,7 +919,7 @@ func (s *ClientService) UpdateClient(userId int, client *model.ClientEntity) (bo
 								var settings map[string]interface{}
 								json.Unmarshal([]byte(inbound.Settings), &settings)
 								if method, ok := settings["method"].(string); ok {
-									clientData["method"] = method
+									clientData["cipher"] = method
 								}
 								clientData["password"] = finalClient.Password
 							case model.VMESS, model.VLESS:
@@ -1687,7 +1688,7 @@ func (s *ClientService) ResetAllClientTraffics(userId int) (bool, error) {
 						clientData["auth"] = client.Password
 					case model.Shadowsocks:
 						if method != "" {
-							clientData["method"] = method
+							clientData["cipher"] = method
 						}
 						clientData["password"] = client.Password
 					case model.VMESS, model.VLESS:
@@ -1829,7 +1830,7 @@ func (s *ClientService) ResetClientTraffic(userId int, clientId int) (bool, erro
 						var settings map[string]any
 						json.Unmarshal([]byte(inbound.Settings), &settings)
 						if method, ok := settings["method"].(string); ok {
-							clientData["method"] = method
+							clientData["cipher"] = method
 						}
 						clientData["password"] = client.Password
 					case model.VMESS, model.VLESS:
@@ -2197,7 +2198,7 @@ func (s *ClientService) BulkResetTraffic(userId int, clientIds []int) (bool, err
 						var settings map[string]any
 						json.Unmarshal([]byte(inbound.Settings), &settings)
 						if method, ok := settings["method"].(string); ok {
-							clientData["method"] = method
+							clientData["cipher"] = method
 						}
 						clientData["password"] = client.Password
 					case model.VMESS, model.VLESS:
@@ -2477,7 +2478,7 @@ func (s *ClientService) BulkEnable(userId int, clientIds []int, enable bool) (bo
 							var settings map[string]interface{}
 							json.Unmarshal([]byte(inbound.Settings), &settings)
 							if method, ok := settings["method"].(string); ok {
-								clientData["method"] = method
+								clientData["cipher"] = method
 							}
 							clientData["password"] = client.Password
 						case model.VMESS, model.VLESS:

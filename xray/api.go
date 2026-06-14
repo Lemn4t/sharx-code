@@ -124,9 +124,10 @@ func (x *XrayAPI) AddUser(Protocol string, inboundTag string, user map[string]an
 			Id: user["id"].(string),
 		})
 	case "vless":
+		vlessFlow, _ := user["flow"].(string)
 		vlessAccount := &vless.Account{
 			Id:   user["id"].(string),
-			Flow: user["flow"].(string),
+			Flow: vlessFlow,
 		}
 		// Add testseed if provided
 		if testseedVal, ok := user["testseed"]; ok {
@@ -156,8 +157,11 @@ func (x *XrayAPI) AddUser(Protocol string, inboundTag string, user map[string]an
 			Password: user["password"].(string),
 		})
 	case "shadowsocks":
+		cipher, _ := user["cipher"].(string)
+		password, _ := user["password"].(string)
+		email, _ := user["email"].(string)
 		var ssCipherType shadowsocks.CipherType
-		switch user["cipher"].(string) {
+		switch cipher {
 		case "aes-128-gcm":
 			ssCipherType = shadowsocks.CipherType_AES_128_GCM
 		case "aes-256-gcm":
@@ -172,13 +176,13 @@ func (x *XrayAPI) AddUser(Protocol string, inboundTag string, user map[string]an
 
 		if ssCipherType != shadowsocks.CipherType_NONE {
 			account = serial.ToTypedMessage(&shadowsocks.Account{
-				Password:   user["password"].(string),
+				Password:   password,
 				CipherType: ssCipherType,
 			})
 		} else {
 			account = serial.ToTypedMessage(&shadowsocks_2022.ServerConfig{
-				Key:   user["password"].(string),
-				Email: user["email"].(string),
+				Key:   password,
+				Email: email,
 			})
 		}
 	case "hysteria", "hysteria2":
