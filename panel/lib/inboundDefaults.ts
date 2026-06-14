@@ -2017,15 +2017,26 @@ export function randomWsPath(): string {
 }
 
 /**
+ * Strip any leading random hex labels (pattern `[0-9a-f]{6}.`) that a previous
+ * call to suggestRandomTlsSni may have prepended, so repeated clicks replace
+ * rather than accumulate: e.g. "ab12cd.ef34gh.example.com" → "example.com".
+ */
+function stripRandomHexLabels(host: string): string {
+  return host.replace(/^([0-9a-f]{6}\.)+/i, "");
+}
+
+/**
  * Random TLS SNI-style hostname: random label + base domain from ws host, TLS SNI, or example.com.
+ * Strips any previously prepended hex labels before generating the new one.
  */
 export function suggestRandomTlsSni(wsHost: string, tlsServerName: string): string {
-  const pick =
+  const rawPick =
     hostFromRealityTarget(wsHost.trim()) ||
     hostFromRealityTarget(tlsServerName.trim()) ||
     "example.com";
+  const base = stripRandomHexLabels(rawPick.replace(/^\.+/, ""));
   const label = randomHexSeq(6);
-  return `${label}.${pick.replace(/^\.+/, "")}`;
+  return `${label}.${base}`;
 }
 
 export { randomPassword };
