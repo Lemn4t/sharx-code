@@ -1102,6 +1102,7 @@ export function HostsPage() {
                     subscriptionAlpn: form.subscriptionAlpn,
                     subscriptionFingerprint: form.subscriptionFingerprint,
                     subscriptionAllowInsecure: form.subscriptionAllowInsecure,
+                    subscriptionSecurity: form.subscriptionSecurity,
                   }}
                   onChange={(patch) =>
                     setForm((f) => ({ ...f, ...patch }))
@@ -1350,6 +1351,7 @@ export function HostsPage() {
                     subscriptionFingerprint: editForm.subscriptionFingerprint,
                     subscriptionAllowInsecure:
                       editForm.subscriptionAllowInsecure,
+                    subscriptionSecurity: editForm.subscriptionSecurity,
                   }}
                   onChange={(patch) =>
                     setEditForm((f) => ({ ...f, ...patch }))
