@@ -4704,6 +4704,20 @@ export function InboundsPage() {
                             }
                           />
                         </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="in-sockopt-tcpmss">
+                            {t("pages.inbounds.sockoptTcpMss", { defaultValue: "TCP MSS (0=default)" })}
+                          </label>
+                          <Input
+                            id="in-sockopt-tcpmss"
+                            type="number"
+                            min={0}
+                            value={String(form.streamForm.sockoptTcpMss)}
+                            onChange={(e) =>
+                              setStreamFormField("sockoptTcpMss", Math.max(0, parseInt(e.target.value, 10) || 0))
+                            }
+                          />
+                        </div>
                       </div>
                     </div>
                   ) : null}
