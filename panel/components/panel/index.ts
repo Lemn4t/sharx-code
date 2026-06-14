@@ -7,3 +7,5 @@ export { PanelShell } from "./PanelShell";
 export { PanelLayoutGate } from "./PanelLayoutGate";
 export { PanelHeaderAppMeta } from "./PanelHeaderAppMeta";
 export { PanelTelegramNavLink } from "./PanelTelegramNavLink";
+export { PanelDonateNavLink } from "./PanelDonateNavLink";
+export { PanelGitHubStarLink } from "./PanelGitHubStarLink";

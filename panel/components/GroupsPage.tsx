@@ -56,6 +56,61 @@ function SectionLabel({
   );
 }
 
+/**
+ * Visual hint shown beneath every right-column field. Tells the user whether
+ * the prefilled value reflects what every client in the group currently has
+ * (so saving without touching is a no-op), or whether clients differ — in
+ * which case typing a value will normalize them all.
+ */
+function ConsistencyHint({
+  loading,
+  clientCount,
+  consistent,
+  t,
+}: {
+  loading: boolean;
+  clientCount: number;
+  consistent: boolean;
+  t: (k: string, opts?: Record<string, unknown>) => string;
+}) {
+  if (clientCount < 1) {
+    return (
+      <p className="mt-1 text-[11px] text-[var(--fg-subtle)]">
+        {t("pages.groups.hintNoClients", {
+          defaultValue: "No clients in this group yet.",
+        })}
+      </p>
+    );
+  }
+  if (loading) {
+    return (
+      <p className="mt-1 text-[11px] text-[var(--fg-subtle)]">
+        {t("loading")}
+      </p>
+    );
+  }
+  if (consistent) {
+    return (
+      <p className="mt-1 text-[11px] text-emerald-600/90 dark:text-emerald-400/80">
+        {t("pages.groups.hintConsistent", {
+          defaultValue:
+            "Current value across all {{count}} clients in this group.",
+          count: clientCount,
+        })}
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1 text-[11px] text-amber-600/90 dark:text-amber-400/90">
+      {t("pages.groups.hintMixed", {
+        defaultValue:
+          "Clients in this group currently have different values. Set a value to normalize all {{count}} clients.",
+        count: clientCount,
+      })}
+    </p>
+  );
+}
+
 /** Capsule toggle for inbound chips inside the group edit modal. */
 function GroupInboundCapsule({
   selected,
@@ -105,6 +160,36 @@ type PendingBulk = {
   action: "reset" | "clearHwid" | "deleteAll" | "enable" | "disable";
   group: GroupRow;
 };
+
+/**
+ * Common settings shared by every client in a group. A field is undefined when
+ * client values differ — the UI then shows a "mixed" hint instead of a value.
+ * Returned by the new `group/{id}/effectiveSettings` endpoint and used as the
+ * source of truth that the group can override.
+ */
+type EffectiveSettings = {
+  clientCount: number;
+  expiryTime?: number;
+  totalGB?: number;
+  hwidEnabled?: boolean;
+  maxHwid?: number;
+  ipLimitEnabled?: boolean;
+  maxIPs?: number;
+  inboundIds?: number[];
+  inboundIdsConsistent: boolean;
+};
+
+/** Convert an epoch ms timestamp to the `YYYY-MM-DDTHH:mm` form expected by `<input type="datetime-local">`. */
+function epochToLocalInput(ms: number): string {
+  if (!ms || ms < 1) return "";
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
+}
 
 function TextArea({
   className = "",
@@ -189,6 +274,9 @@ export function GroupsPage() {
   const [inboundOrder, setInboundOrder] = useState<number[]>([]);
   const [inboundsTouched, setInboundsTouched] = useState(false);
 
+  const [effective, setEffective] = useState<EffectiveSettings | null>(null);
+  const [effectiveLoading, setEffectiveLoading] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     const r = await getJson<GroupRow[]>(panel("group/list"));
@@ -229,10 +317,6 @@ export function GroupsPage() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (bulkGroup) void loadInbounds();
-  }, [bulkGroup, loadInbounds]);
-
   const openAdd = () => {
     setAddForm({ name: "", description: "" });
     setAddOpen(true);
@@ -251,8 +335,71 @@ export function GroupsPage() {
     setInboundIds({});
     setInboundOrder([]);
     setInboundsTouched(false);
+    setEffective(null);
     setBulkGroup(r);
   };
+
+  /**
+   * Apply the values returned by `effectiveSettings` to the form. Only fields
+   * with a non-undefined value are prefilled — undefined means "mixed across
+   * clients" and the UI surfaces a hint instead. We do NOT mark fields as
+   * touched here so that Save skips bulk endpoints when the user hasn't
+   * actually changed anything.
+   */
+  const applyEffective = useCallback((eff: EffectiveSettings) => {
+    if (eff.expiryTime != null) {
+      setExpiryValue(epochToLocalInput(eff.expiryTime));
+    }
+    if (eff.totalGB != null) {
+      setTrafficGB(Math.max(0, Math.floor(eff.totalGB)));
+    }
+    if (eff.hwidEnabled != null && eff.maxHwid != null) {
+      setHwidForm({ enabled: eff.hwidEnabled, maxHwid: eff.maxHwid });
+    }
+    if (eff.ipLimitEnabled != null && eff.maxIPs != null) {
+      setIpForm({
+        enabled: eff.ipLimitEnabled,
+        maxIPs: Math.max(0, eff.maxIPs),
+      });
+    }
+    if (eff.inboundIdsConsistent && Array.isArray(eff.inboundIds)) {
+      const ids = eff.inboundIds;
+      const map: Record<number, boolean> = {};
+      for (const id of ids) map[id] = true;
+      setInboundIds(map);
+      setInboundOrder(ids.slice());
+    }
+  }, []);
+
+  const loadEffective = useCallback(
+    async (groupId: number) => {
+      setEffectiveLoading(true);
+      try {
+        const r = await getJson<EffectiveSettings>(
+          panel(`group/${groupId}/effectiveSettings`),
+        );
+        if (r.success && r.obj && typeof r.obj === "object") {
+          const eff = r.obj as EffectiveSettings;
+          setEffective(eff);
+          applyEffective(eff);
+        } else {
+          setEffective(null);
+        }
+      } catch {
+        setEffective(null);
+      } finally {
+        setEffectiveLoading(false);
+      }
+    },
+    [applyEffective],
+  );
+
+  useEffect(() => {
+    if (bulkGroup) {
+      void loadInbounds();
+      void loadEffective(bulkGroup.id);
+    }
+  }, [bulkGroup, loadInbounds, loadEffective]);
 
   const closeEdit = () => {
     if (saving) return;
@@ -893,6 +1040,12 @@ export function GroupsPage() {
                         defaultValue: "Leave blank for unlimited",
                       })}
                     </p>
+                    <ConsistencyHint
+                      loading={effectiveLoading}
+                      clientCount={bulkGroup.clientCount}
+                      consistent={effective?.expiryTime != null}
+                      t={t}
+                    />
                   </div>
 
                   {/* Traffic */}
@@ -920,6 +1073,12 @@ export function GroupsPage() {
                         defaultValue: "0 = unlimited",
                       })}
                     </p>
+                    <ConsistencyHint
+                      loading={effectiveLoading}
+                      clientCount={bulkGroup.clientCount}
+                      consistent={effective?.totalGB != null}
+                      t={t}
+                    />
                   </div>
 
                   {/* Inbounds */}
@@ -997,6 +1156,12 @@ export function GroupsPage() {
                     <p className="mt-2 text-xs text-[var(--fg-subtle)]">
                       {t("pages.groups.assignInboundsHint")}
                     </p>
+                    <ConsistencyHint
+                      loading={effectiveLoading}
+                      clientCount={bulkGroup.clientCount}
+                      consistent={effective?.inboundIdsConsistent === true}
+                      t={t}
+                    />
                   </div>
 
                   {/* HWID */}
@@ -1041,6 +1206,15 @@ export function GroupsPage() {
                         {t("pages.clients.maxHwidDesc")}
                       </p>
                     </div>
+                    <ConsistencyHint
+                      loading={effectiveLoading}
+                      clientCount={bulkGroup.clientCount}
+                      consistent={
+                        effective?.hwidEnabled != null &&
+                        effective?.maxHwid != null
+                      }
+                      t={t}
+                    />
                   </div>
 
                   {/* IP Limit */}
@@ -1087,6 +1261,15 @@ export function GroupsPage() {
                         }}
                       />
                     </div>
+                    <ConsistencyHint
+                      loading={effectiveLoading}
+                      clientCount={bulkGroup.clientCount}
+                      consistent={
+                        effective?.ipLimitEnabled != null &&
+                        effective?.maxIPs != null
+                      }
+                      t={t}
+                    />
                   </div>
                 </div>
               </div>

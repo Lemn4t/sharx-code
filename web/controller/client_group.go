@@ -38,6 +38,7 @@ func (a *ClientGroupController) initRouter(g *gin.RouterGroup) {
 	g.POST("/update/:id", a.updateGroup)
 	g.POST("/del/:id", a.deleteGroup)
 	g.GET("/:id/clients", a.getClientsInGroup)
+	g.GET("/:id/effectiveSettings", a.getEffectiveSettings)
 	g.POST("/:id/assignClients", a.assignClientsToGroup)
 	g.POST("/:id/removeClients", a.removeClientsFromGroup)
 	// Bulk operations for groups
@@ -571,4 +572,107 @@ func (a *ClientGroupController) bulkSetIPLimit(c *gin.Context) {
 		return
 	}
 	jsonMsg(c, "IP limit updated successfully", nil)
+}
+
+// effectiveGroupSettings is the response shape for getEffectiveSettings. Each
+// field is a pointer so the JSON encoder can distinguish "common value across
+// all clients in the group" (non-nil) from "values differ" / "no clients"
+// (nil). The frontend uses this to pre-fill the group edit modal and surface a
+// "mixed values" hint when appropriate.
+type effectiveGroupSettings struct {
+	ClientCount    int      `json:"clientCount"`
+	ExpiryTime     *int64   `json:"expiryTime,omitempty"`
+	TotalGB        *float64 `json:"totalGB,omitempty"`
+	HWIDEnabled    *bool    `json:"hwidEnabled,omitempty"`
+	MaxHwid        *int     `json:"maxHwid,omitempty"`
+	IPLimitEnabled *bool    `json:"ipLimitEnabled,omitempty"`
+	MaxIPs         *int     `json:"maxIPs,omitempty"`
+	InboundIds     []int    `json:"inboundIds,omitempty"`
+	// InboundIdsConsistent is true when every client in the group has the same
+	// ordered inbound assignment set. When false, InboundIds is nil/empty.
+	InboundIdsConsistent bool `json:"inboundIdsConsistent"`
+}
+
+// getEffectiveSettings returns the values currently shared by every client in
+// the group. A field is omitted when client values differ — in that case the
+// UI shows a "mixed" hint. The group is treated as the source of truth: the
+// user can set a value here and Save will propagate it to every client.
+func (a *ClientGroupController) getEffectiveSettings(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, "Invalid group ID", err)
+		return
+	}
+	user := session.GetLoginUser(c)
+	clients, err := a.groupService.GetClientsInGroup(id, user.Id)
+	if err != nil {
+		jsonMsg(c, "Failed to get clients in group", err)
+		return
+	}
+	resp := effectiveGroupSettings{ClientCount: len(clients), InboundIdsConsistent: true}
+	if len(clients) == 0 {
+		jsonObj(c, resp, nil)
+		return
+	}
+
+	first := clients[0]
+	expirySame := true
+	totalSame := true
+	hwidSame := true
+	ipSame := true
+	inboundsSame := true
+	for _, cl := range clients[1:] {
+		if cl.ExpiryTime != first.ExpiryTime {
+			expirySame = false
+		}
+		if cl.TotalGB != first.TotalGB {
+			totalSame = false
+		}
+		if cl.HWIDEnabled != first.HWIDEnabled || cl.MaxHWID != first.MaxHWID {
+			hwidSame = false
+		}
+		if cl.IPLimitEnabled != first.IPLimitEnabled || cl.MaxIPs != first.MaxIPs {
+			ipSame = false
+		}
+		if !intSliceEqual(cl.InboundIds, first.InboundIds) {
+			inboundsSame = false
+		}
+	}
+	if expirySame {
+		v := first.ExpiryTime
+		resp.ExpiryTime = &v
+	}
+	if totalSame {
+		v := first.TotalGB
+		resp.TotalGB = &v
+	}
+	if hwidSame {
+		he := first.HWIDEnabled
+		mh := first.MaxHWID
+		resp.HWIDEnabled = &he
+		resp.MaxHwid = &mh
+	}
+	if ipSame {
+		ie := first.IPLimitEnabled
+		mi := first.MaxIPs
+		resp.IPLimitEnabled = &ie
+		resp.MaxIPs = &mi
+	}
+	resp.InboundIdsConsistent = inboundsSame
+	if inboundsSame {
+		resp.InboundIds = append([]int{}, first.InboundIds...)
+	}
+	jsonObj(c, resp, nil)
+}
+
+func intSliceEqual(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

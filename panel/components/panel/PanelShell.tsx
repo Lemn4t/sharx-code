@@ -28,6 +28,8 @@ import { SETTINGS_TAB_IDS, tSettingsTabLabel } from "@/lib/settingsTabs";
 import { getUiPref } from "@/lib/uiPrefs";
 import { PanelHeaderAppMeta } from "@/components/panel/PanelHeaderAppMeta";
 import { PanelTelegramNavLink } from "@/components/panel/PanelTelegramNavLink";
+import { PanelDonateNavLink } from "@/components/panel/PanelDonateNavLink";
+import { PanelGitHubStarLink } from "@/components/panel/PanelGitHubStarLink";
 type NavItem = { key: string; href: string; icon: React.ReactNode; label: string };
 type NavEntry =
   | NavItem
@@ -265,7 +267,9 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+            <PanelGitHubStarLink />
             <PanelTelegramNavLink />
+            <PanelDonateNavLink />
             <PanelHeaderAppMeta />
           </div>
         </div>
