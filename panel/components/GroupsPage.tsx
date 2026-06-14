@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Layers, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Building2, Layers, Pencil, Plus, Trash2 } from "lucide-react";
 import type { TextareaHTMLAttributes } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -167,7 +167,7 @@ export function GroupsPage() {
   const openEdit = (r: GroupRow) => {
     setEditingId(r.id);
     setForm({ name: r.name, description: r.description });
-    setFormOpen(true);
+    setBulkGroup(r);
   };
 
   const submitForm = async () => {
@@ -196,7 +196,17 @@ export function GroupsPage() {
                 : "pages.groups.updateSuccess",
             ),
         );
-        setFormOpen(false);
+        if (editingId == null) {
+          setFormOpen(false);
+        } else if (bulkGroup) {
+          // Sync the in-place row + title with the new name/description without closing the edit modal.
+          const updated: GroupRow = {
+            ...bulkGroup,
+            name: name,
+            description: form.description.trim(),
+          };
+          setBulkGroup(updated);
+        }
         void load();
       } else {
         toast.error(
@@ -541,17 +551,9 @@ export function GroupsPage() {
                         <Button
                           variant="secondary"
                           className="!p-2"
-                          title={t("pages.groups.bulkOperations")}
-                          onClick={() => setBulkGroup(r)}
-                          aria-label={t("pages.groups.bulkOperations")}
-                        >
-                          <Users size={16} />
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          className="!p-2"
                           onClick={() => openEdit(r)}
                           aria-label={t("pages.groups.editGroup")}
+                          title={t("pages.groups.editGroup")}
                         >
                           <Pencil size={16} />
                         </Button>
@@ -576,28 +578,76 @@ export function GroupsPage() {
 
       <Modal
         open={bulkGroup != null}
-        onClose={() => setBulkGroup(null)}
+        onClose={() => {
+          setBulkGroup(null);
+          setEditingId(null);
+        }}
         title={
           bulkGroup
-            ? `${t("pages.groups.bulkOperations")} — ${bulkGroup.name}`
-            : t("pages.groups.bulkOperations")
+            ? `${t("pages.groups.editGroup")} — ${bulkGroup.name}`
+            : t("pages.groups.editGroup")
         }
-        width={480}
+        width={560}
         footer={
           <Button
             variant="secondary"
             type="button"
-            onClick={() => setBulkGroup(null)}
+            onClick={() => {
+              setBulkGroup(null);
+              setEditingId(null);
+            }}
           >
             {t("close")}
           </Button>
         }
       >
         {bulkGroup ? (
-          <div className="flex flex-col gap-3 text-sm">
+          <div className="flex flex-col gap-4 text-sm">
             <p className="text-xs text-[var(--fg-muted)]">
               {t("pages.groups.clientDisplay", { count: bulkGroup.clientCount })}
             </p>
+
+            {/* General — group metadata */}
+            {editingId === bulkGroup.id ? (
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
+                  {t("pages.groups.sectionGeneral", { defaultValue: "General" })}
+                </p>
+                <div className="space-y-2">
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--fg-muted)]" htmlFor="grp-edit-name">
+                      {t("pages.groups.groupName")}
+                    </label>
+                    <Input
+                      id="grp-edit-name"
+                      value={form.name}
+                      maxLength={30}
+                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--fg-muted)]" htmlFor="grp-edit-desc">
+                      {t("pages.groups.groupDescription")}
+                    </label>
+                    <TextArea
+                      id="grp-edit-desc"
+                      value={form.description}
+                      onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      variant="primary"
+                      type="button"
+                      loading={formSubmitting}
+                      onClick={() => void submitForm()}
+                    >
+                      {t("save", { defaultValue: "Save" })}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {/* Limits */}
             <div>

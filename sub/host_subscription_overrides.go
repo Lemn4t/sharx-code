@@ -28,6 +28,29 @@ func shallowCopyAnyMap(m map[string]any) map[string]any {
 	return out
 }
 
+// tlsParamKeys lists query keys that only make sense when security=tls/reality.
+// Removed when SubscriptionSecurity overrides security to "none".
+var tlsParamKeys = []string{"sni", "alpn", "fp", "pbk", "sid", "spx", "allowInsecure", "pcs", "flow"}
+
+// applyHostSecurityOverride applies the Host.SubscriptionSecurity override to
+// the security/TLS field in vless/trojan/ss-style query params.
+// Empty override: no-op. "tls": forces security=tls. "none": forces security=none
+// and strips TLS-only keys (sni, alpn, fp, pbk, sid, spx, allowInsecure, pcs, flow).
+func applyHostSecurityOverride(host *model.Host, params map[string]string) {
+	if host == nil || params == nil {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(host.SubscriptionSecurity)) {
+	case "tls":
+		params["security"] = "tls"
+	case "none":
+		params["security"] = "none"
+		for _, k := range tlsParamKeys {
+			delete(params, k)
+		}
+	}
+}
+
 // applyHostOverridesToParams merges optional Host subscription_* fields into vless:// / trojan:// / ss:// query params.
 func applyHostOverridesToParams(host *model.Host, streamNetwork string, params map[string]string) {
 	if host == nil || params == nil {
@@ -79,6 +102,8 @@ func applyHostOverridesToParams(host *model.Host, streamNetwork string, params m
 			}
 		}
 	}
+	// Apply security override last so it can re-set or strip TLS keys regardless of other rules.
+	applyHostSecurityOverride(host, params)
 }
 
 // applyHostOverridesToVmessBase merges Host subscription_* into VMess share JSON (before encoding).
@@ -131,6 +156,19 @@ func applyHostOverridesToVmessBase(host *model.Host, network string, baseObj map
 			}
 		}
 	}
+	// Security override for VMess share JSON ("tls": "tls"/"none"; reality stays untouched).
+	switch strings.ToLower(strings.TrimSpace(host.SubscriptionSecurity)) {
+	case "tls":
+		baseObj["tls"] = "tls"
+	case "none":
+		baseObj["tls"] = ""
+		// VMess JSON doesn't carry TLS extras for non-TLS mode; clear them defensively.
+		delete(baseObj, "sni")
+		delete(baseObj, "alpn")
+		delete(baseObj, "fp")
+		delete(baseObj, "allowInsecure")
+		delete(baseObj, "pinnedPeerCertSha256")
+	}
 }
 
 // applyHostOverridesToHysteriaParams merges TLS-related Host overrides into hysteria:// query params (uses "insecure", not "allowInsecure").
@@ -156,4 +194,6 @@ func applyHostOverridesToHysteriaParams(host *model.Host, params map[string]stri
 			delete(params, "insecure")
 		}
 	}
+	// Hysteria is intrinsically TLS-based; we don't translate "tls"/"none" here.
+	// SubscriptionSecurity is intentionally ignored for hysteria/hysteria2 links.
 }

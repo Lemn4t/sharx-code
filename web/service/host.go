@@ -24,6 +24,14 @@ func normalizeHostSubscriptionOverrides(h *model.Host) {
 	h.SubscriptionAlpn = strings.TrimSpace(h.SubscriptionAlpn)
 	h.SubscriptionFingerprint = strings.TrimSpace(h.SubscriptionFingerprint)
 	h.SubscriptionApplyMode = model.NormalizeHostSubscriptionApplyMode(h.SubscriptionApplyMode)
+	switch strings.ToLower(strings.TrimSpace(h.SubscriptionSecurity)) {
+	case "tls":
+		h.SubscriptionSecurity = "tls"
+	case "none":
+		h.SubscriptionSecurity = "none"
+	default:
+		h.SubscriptionSecurity = ""
+	}
 }
 
 // GetHosts retrieves all hosts for a specific user.
@@ -192,6 +200,7 @@ func (s *HostService) UpdateHost(userId int, host *model.Host) error {
 		} else {
 			updates["subscription_allow_insecure"] = gorm.Expr("NULL")
 		}
+		updates["subscription_security"] = host.SubscriptionSecurity
 	} else if host.Port > 0 {
 		updates["port"] = host.Port
 	}

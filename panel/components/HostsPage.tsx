@@ -48,6 +48,7 @@ type HostRow = {
   subscriptionAlpn?: string;
   subscriptionFingerprint?: string;
   subscriptionAllowInsecure?: boolean | null;
+  subscriptionSecurity?: string;
 };
 
 type HostInboundDetailBindingsFragment = {
@@ -119,6 +120,8 @@ function allowInsecureToApi(s: AllowInsecureUi): boolean | null {
   return null;
 }
 
+type SecurityOverrideUi = "inherit" | "tls" | "none";
+
 type HostTlsFormSlice = {
   subscriptionSni: string;
   subscriptionHttpHost: string;
@@ -126,6 +129,7 @@ type HostTlsFormSlice = {
   subscriptionAlpn: string;
   subscriptionFingerprint: string;
   subscriptionAllowInsecure: AllowInsecureUi;
+  subscriptionSecurity: SecurityOverrideUi;
 };
 
 const defaultTlsForm = (): HostTlsFormSlice => ({
@@ -135,6 +139,7 @@ const defaultTlsForm = (): HostTlsFormSlice => ({
   subscriptionAlpn: "",
   subscriptionFingerprint: "",
   subscriptionAllowInsecure: "inherit",
+  subscriptionSecurity: "inherit",
 });
 
 function HostSubscriptionTlsSection({
@@ -240,8 +245,50 @@ function HostSubscriptionTlsSection({
           {t("pages.hosts.subscriptionAllowInsecureHint")}
         </span>
       </label>
+      <label className="grid gap-1">
+        <span className="text-xs text-[var(--fg-muted)]">
+          {t("pages.hosts.subscriptionSecurity", { defaultValue: "Force TLS in share link" })}
+        </span>
+        <SelectNative
+          value={values.subscriptionSecurity}
+          onChange={(e) =>
+            onChange({
+              subscriptionSecurity: e.target.value as SecurityOverrideUi,
+            })
+          }
+        >
+          <option value="inherit">
+            {t("pages.hosts.subscriptionSecurityInherit", { defaultValue: "Inherit from inbound" })}
+          </option>
+          <option value="tls">
+            {t("pages.hosts.subscriptionSecurityTls", { defaultValue: "Force TLS (security=tls)" })}
+          </option>
+          <option value="none">
+            {t("pages.hosts.subscriptionSecurityNone", { defaultValue: "Force none (security=none)" })}
+          </option>
+        </SelectNative>
+        <span className="text-[11px] text-[var(--fg-subtle)]">
+          {t("pages.hosts.subscriptionSecurityHint", {
+            defaultValue:
+              "Use when a TLS terminator (Caddy/HAProxy/nginx) fronts Xray: Xray runs with security=none but the share link must advertise security=tls (or vice versa).",
+          })}
+        </span>
+      </label>
     </Surface>
   );
+}
+
+function securityFromApi(v: unknown): SecurityOverrideUi {
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "tls") return "tls";
+    if (s === "none") return "none";
+  }
+  return "inherit";
+}
+
+function securityToApi(s: SecurityOverrideUi): string {
+  return s === "inherit" ? "" : s;
 }
 
 function hostTlsFromRow(o: HostRow): HostTlsFormSlice {
@@ -254,6 +301,7 @@ function hostTlsFromRow(o: HostRow): HostTlsFormSlice {
     subscriptionAllowInsecure: allowInsecureFromApi(
       o.subscriptionAllowInsecure,
     ),
+    subscriptionSecurity: securityFromApi(o.subscriptionSecurity),
   };
 }
 
@@ -482,6 +530,7 @@ export function HostsPage() {
         subscriptionAllowInsecure: allowInsecureToApi(
           form.subscriptionAllowInsecure,
         ),
+        subscriptionSecurity: securityToApi(form.subscriptionSecurity),
         ...(inboundIds.length > 0 ? { inboundIds } : {}),
       };
       const r = await postJson<HostRow>(panel("host/add"), body, true);
@@ -620,6 +669,7 @@ export function HostsPage() {
         subscriptionAllowInsecure: allowInsecureToApi(
           editForm.subscriptionAllowInsecure,
         ),
+        subscriptionSecurity: securityToApi(editForm.subscriptionSecurity),
         inboundIds,
       };
       const r = await postJson<HostRow>(

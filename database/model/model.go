@@ -492,6 +492,11 @@ type Host struct {
 	SubscriptionAlpn          string `json:"subscriptionAlpn" gorm:"column:subscription_alpn"`
 	SubscriptionFingerprint   string `json:"subscriptionFingerprint" gorm:"column:subscription_fp"`
 	SubscriptionAllowInsecure *bool  `json:"subscriptionAllowInsecure,omitempty" gorm:"column:subscription_allow_insecure"` // nil = inherit from inbound
+	// SubscriptionSecurity overrides the security/tls field in share links:
+	//   "" (default) — inherit from inbound stream settings,
+	//   "tls"        — force security=tls (e.g. when a TLS terminator fronts Xray),
+	//   "none"       — force security=none (e.g. when Xray serves plain TCP).
+	SubscriptionSecurity string `json:"subscriptionSecurity" gorm:"column:subscription_security;default:''"`
 	CreatedAt                 int64  `json:"createdAt" gorm:"autoCreateTime"`                                               // Creation timestamp
 	UpdatedAt                 int64  `json:"updatedAt" gorm:"autoUpdateTime"`                                               // Last update timestamp
 

@@ -11,7 +11,14 @@ function cx(...parts: (string | false | undefined)[]) {
   return parts.filter(Boolean).join(" ");
 }
 
-/** Mouse click on a label focuses the sr-only input and scrolls overflow parents to top. */
+/**
+ * Mouse click on a label focuses the sr-only input and the browser scrolls
+ * overflow parents to bring it into view. We:
+ *   1. preventDefault on left mousedown (suppresses focus-on-click in most browsers), and
+ *   2. anchor the sr-only input to the label via `position: relative` on the label
+ *      (so even if focus still moves, scrollIntoView is a no-op — the input is
+ *      already inside the label, which is by definition visible).
+ */
 function preventLabelFocusScroll(e: MouseEvent<HTMLLabelElement>) {
   if (e.button === 0) e.preventDefault();
 }
@@ -49,7 +56,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
     <label
       onMouseDown={preventLabelFocusScroll}
       className={cx(
-        "inline-flex shrink-0 cursor-pointer items-center",
+        "relative inline-flex shrink-0 cursor-pointer items-center",
         rest.disabled && "cursor-not-allowed",
         className,
       )}
@@ -82,7 +89,7 @@ export function CheckboxField({
       htmlFor={cid}
       onMouseDown={preventLabelFocusScroll}
       className={cx(
-        "flex cursor-pointer gap-2.5 text-sm text-[var(--fg-muted)]",
+        "relative flex cursor-pointer gap-2.5 text-sm text-[var(--fg-muted)]",
         align === "start" ? "items-start" : "items-center",
         rest.disabled && "cursor-not-allowed opacity-60",
         className,
