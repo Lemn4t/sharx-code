@@ -28,14 +28,19 @@ func shallowCopyAnyMap(m map[string]any) map[string]any {
 	return out
 }
 
-// tlsParamKeys lists query keys that only make sense when security=tls/reality.
-// Removed when SubscriptionSecurity overrides security to "none".
-var tlsParamKeys = []string{"sni", "alpn", "fp", "pbk", "sid", "spx", "allowInsecure", "pcs", "flow"}
+// realityOnlyKeys are Reality-specific query keys removed when overriding security to TLS or none.
+var realityOnlyKeys = []string{"pbk", "sid", "spx"}
+
+// allSecurityKeys are all TLS / Reality query keys removed when overriding security to none.
+var allSecurityKeys = []string{"sni", "alpn", "fp", "pbk", "sid", "spx", "allowInsecure", "pcs", "flow", "ech"}
 
 // applyHostSecurityOverride applies the Host.SubscriptionSecurity override to
-// the security/TLS field in vless/trojan/ss-style query params.
-// Empty override: no-op. "tls": forces security=tls. "none": forces security=none
-// and strips TLS-only keys (sni, alpn, fp, pbk, sid, spx, allowInsecure, pcs, flow).
+// the security/TLS field in vless/trojan/ss-style query params, mirroring 3x-ui's
+// External Proxy "Force TLS" semantics:
+//   - ""    (inherit) → no-op; security/params from the inbound flow through
+//   - "tls"           → security=tls, strip Reality-only keys (pbk, sid, spx);
+//                       TLS-compatible keys (sni, alpn, fp, allowInsecure, ech, flow) stay
+//   - "none"          → security=none, strip all TLS/Reality-related keys
 func applyHostSecurityOverride(host *model.Host, params map[string]string) {
 	if host == nil || params == nil {
 		return
@@ -43,9 +48,12 @@ func applyHostSecurityOverride(host *model.Host, params map[string]string) {
 	switch strings.ToLower(strings.TrimSpace(host.SubscriptionSecurity)) {
 	case "tls":
 		params["security"] = "tls"
+		for _, k := range realityOnlyKeys {
+			delete(params, k)
+		}
 	case "none":
 		params["security"] = "none"
-		for _, k := range tlsParamKeys {
+		for _, k := range allSecurityKeys {
 			delete(params, k)
 		}
 	}
@@ -156,18 +164,18 @@ func applyHostOverridesToVmessBase(host *model.Host, network string, baseObj map
 			}
 		}
 	}
-	// Security override for VMess share JSON ("tls": "tls"/"none"; reality stays untouched).
+	// Security override for VMess share JSON, mirroring 3x-ui's Force TLS semantics.
 	switch strings.ToLower(strings.TrimSpace(host.SubscriptionSecurity)) {
 	case "tls":
 		baseObj["tls"] = "tls"
 	case "none":
 		baseObj["tls"] = ""
-		// VMess JSON doesn't carry TLS extras for non-TLS mode; clear them defensively.
 		delete(baseObj, "sni")
 		delete(baseObj, "alpn")
 		delete(baseObj, "fp")
 		delete(baseObj, "allowInsecure")
 		delete(baseObj, "pinnedPeerCertSha256")
+		delete(baseObj, "ech")
 	}
 }
 

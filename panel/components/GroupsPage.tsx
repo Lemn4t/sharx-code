@@ -1,8 +1,8 @@
 "use client";
 
-import { Building2, Layers, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Building2, Pencil, Plus, Trash2 } from "lucide-react";
 import type { TextareaHTMLAttributes } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getJson, postJson, type Msg } from "@/lib/api";
 import { panel } from "@/lib/paths";
@@ -10,10 +10,7 @@ import { PageScaffold, PageHeader, Surface } from "@/components/panel";
 import {
   Button,
   CheckboxField,
-  CheckboxOptionCard,
-  CheckboxOptionList,
   ConfirmDialog,
-  SelectionListToolbar,
   IconTile,
   Input,
   Modal,
@@ -21,6 +18,35 @@ import {
   Spinner,
   useToast,
 } from "@/components/ui";
+
+/** Capsule toggle for inbound chips in group bulk-edit, matching the client-edit modal. */
+function GroupInboundCapsule({
+  selected,
+  onToggle,
+  label,
+  sublabel,
+}: {
+  selected: boolean;
+  onToggle: () => void;
+  label: string;
+  sublabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={
+        "inline-flex min-w-0 max-w-full flex-col rounded-full border px-3 py-1.5 text-left text-xs transition-colors " +
+        (selected
+          ? "border-[var(--accent)] bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] text-[var(--fg)]"
+          : "border-[var(--border)] bg-[var(--surface)] text-[var(--fg-muted)] hover:border-[var(--fg-subtle)]")
+      }
+    >
+      <span className="truncate font-medium">{label}</span>
+      <span className="truncate text-[10px] text-[var(--fg-subtle)]">{sublabel}</span>
+    </button>
+  );
+}
 
 type GroupRow = {
   id: number;
@@ -91,28 +117,23 @@ export function GroupsPage() {
   const [pendingBulk, setPendingBulk] = useState<PendingBulk | null>(null);
   const [bulkWorking, setBulkWorking] = useState(false);
 
-  const [hwidGroup, setHwidGroup] = useState<GroupRow | null>(null);
+  // Inline sections inside the unified edit modal. Each "section" tracks only
+  // its own submit-busy flag; opening/closing follows bulkGroup.
   const [hwidForm, setHwidForm] = useState({ maxHwid: 0, enabled: true });
   const [hwidSubmitting, setHwidSubmitting] = useState(false);
 
-  const [inboundGroup, setInboundGroup] = useState<GroupRow | null>(null);
   const [inbounds, setInbounds] = useState<InboundOption[]>([]);
   const [inboundIds, setInboundIds] = useState<Record<number, boolean>>({});
+  // Ordered subset of inboundIds (true ones), preserving the order shown in subscriptions.
+  const [inboundOrder, setInboundOrder] = useState<number[]>([]);
   const [inboundSubmitting, setInboundSubmitting] = useState(false);
-  const inboundDraftGroupIdRef = useRef<number | null>(null);
 
-  // Expiry bulk modal
-  const [expiryGroup, setExpiryGroup] = useState<GroupRow | null>(null);
-  const [expiryValue, setExpiryValue] = useState<string>(""); // ISO date string
+  const [expiryValue, setExpiryValue] = useState<string>("");
   const [expirySubmitting, setExpirySubmitting] = useState(false);
 
-  // Traffic limit bulk modal
-  const [trafficGroup, setTrafficGroup] = useState<GroupRow | null>(null);
   const [trafficGB, setTrafficGB] = useState<number>(0);
   const [trafficSubmitting, setTrafficSubmitting] = useState(false);
 
-  // IP limit bulk modal
-  const [ipGroup, setIpGroup] = useState<GroupRow | null>(null);
   const [ipForm, setIpForm] = useState({ maxIPs: 1, enabled: true });
   const [ipSubmitting, setIpSubmitting] = useState(false);
 
@@ -155,8 +176,8 @@ export function GroupsPage() {
   }, [load]);
 
   useEffect(() => {
-    if (inboundGroup) void loadInbounds();
-  }, [inboundGroup, loadInbounds]);
+    if (bulkGroup) void loadInbounds();
+  }, [bulkGroup, loadInbounds]);
 
   const openAdd = () => {
     setEditingId(null);
@@ -167,7 +188,38 @@ export function GroupsPage() {
   const openEdit = (r: GroupRow) => {
     setEditingId(r.id);
     setForm({ name: r.name, description: r.description });
+    setHwidForm({ maxHwid: 0, enabled: true });
+    setIpForm({ maxIPs: 1, enabled: true });
+    setTrafficGB(0);
+    setExpiryValue("");
+    setInboundIds({});
+    setInboundOrder([]);
     setBulkGroup(r);
+  };
+
+  const toggleInboundId = (id: number) => {
+    setInboundIds((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      const isOn = next[id];
+      setInboundOrder((order) => {
+        if (isOn) return order.includes(id) ? order : [...order, id];
+        return order.filter((x) => x !== id);
+      });
+      return next;
+    });
+  };
+
+  const moveInboundOrder = (idx: number, dir: -1 | 1) => {
+    setInboundOrder((order) => {
+      const j = idx + dir;
+      if (j < 0 || j >= order.length) return order;
+      const next = order.slice();
+      const a = next[idx]!;
+      const b = next[j]!;
+      next[idx] = b;
+      next[j] = a;
+      return next;
+    });
   };
 
   const submitForm = async () => {
@@ -307,18 +359,12 @@ export function GroupsPage() {
     }
   };
 
-  const openHwidModal = (g: GroupRow) => {
-    setBulkGroup(null);
-    setHwidGroup(g);
-    setHwidForm({ maxHwid: 0, enabled: true });
-  };
-
   const submitHwid = async () => {
-    if (hwidGroup == null) return;
+    if (bulkGroup == null) return;
     setHwidSubmitting(true);
     try {
       const r = await postJson<unknown>(
-        panel(`group/${hwidGroup.id}/bulk/setHwidLimit`),
+        panel(`group/${bulkGroup.id}/bulk/setHwidLimit`),
         {
           maxHwid: Math.max(0, Math.floor(Number(hwidForm.maxHwid)) || 0),
           enabled: hwidForm.enabled,
@@ -326,17 +372,10 @@ export function GroupsPage() {
         true,
       );
       if (r.success) {
-        toast.success(
-          (r as { msg?: string }).msg ||
-            t("success", { defaultValue: "OK" }),
-        );
-        setHwidGroup(null);
+        toast.success((r as { msg?: string }).msg || t("success", { defaultValue: "OK" }));
         void load();
       } else {
-        toast.error(
-          (r as { msg?: string }).msg ||
-            t("fail", { defaultValue: "Error" }),
-        );
+        toast.error((r as { msg?: string }).msg || t("fail", { defaultValue: "Error" }));
       }
     } catch {
       toast.error(t("fail", { defaultValue: "Error" }));
@@ -345,30 +384,8 @@ export function GroupsPage() {
     }
   };
 
-  const openInboundsModal = (g: GroupRow) => {
-    setBulkGroup(null);
-    if (inboundDraftGroupIdRef.current !== g.id) {
-      setInboundIds({});
-      inboundDraftGroupIdRef.current = g.id;
-    }
-    setInboundGroup(g);
-  };
-
-  const backToBulkFromInbounds = () => {
-    if (inboundGroup) {
-      setBulkGroup(inboundGroup);
-    }
-    setInboundGroup(null);
-  };
-
-  const openExpiryModal = (g: GroupRow) => {
-    setBulkGroup(null);
-    setExpiryValue("");
-    setExpiryGroup(g);
-  };
-
   const submitExpiry = async () => {
-    if (expiryGroup == null) return;
+    if (bulkGroup == null) return;
     const ts = expiryValue ? new Date(expiryValue).getTime() : 0;
     if (expiryValue && isNaN(ts)) {
       toast.error(t("pages.groups.invalidDate", { defaultValue: "Invalid date" }));
@@ -377,13 +394,12 @@ export function GroupsPage() {
     setExpirySubmitting(true);
     try {
       const r = await postJson<unknown>(
-        panel(`group/${expiryGroup.id}/bulk/setExpiry`),
+        panel(`group/${bulkGroup.id}/bulk/setExpiry`),
         { expiryTime: ts },
         true,
       );
       if (r.success) {
         toast.success((r as { msg?: string }).msg || t("success", { defaultValue: "OK" }));
-        setExpiryGroup(null);
         void load();
       } else {
         toast.error((r as { msg?: string }).msg || t("fail", { defaultValue: "Error" }));
@@ -395,24 +411,17 @@ export function GroupsPage() {
     }
   };
 
-  const openTrafficModal = (g: GroupRow) => {
-    setBulkGroup(null);
-    setTrafficGB(0);
-    setTrafficGroup(g);
-  };
-
   const submitTraffic = async () => {
-    if (trafficGroup == null) return;
+    if (bulkGroup == null) return;
     setTrafficSubmitting(true);
     try {
       const r = await postJson<unknown>(
-        panel(`group/${trafficGroup.id}/bulk/setTrafficLimit`),
+        panel(`group/${bulkGroup.id}/bulk/setTrafficLimit`),
         { totalGB: Math.max(0, trafficGB) },
         true,
       );
       if (r.success) {
         toast.success((r as { msg?: string }).msg || t("success", { defaultValue: "OK" }));
-        setTrafficGroup(null);
         void load();
       } else {
         toast.error((r as { msg?: string }).msg || t("fail", { defaultValue: "Error" }));
@@ -424,24 +433,17 @@ export function GroupsPage() {
     }
   };
 
-  const openIPModal = (g: GroupRow) => {
-    setBulkGroup(null);
-    setIpForm({ maxIPs: 1, enabled: true });
-    setIpGroup(g);
-  };
-
   const submitIP = async () => {
-    if (ipGroup == null) return;
+    if (bulkGroup == null) return;
     setIpSubmitting(true);
     try {
       const r = await postJson<unknown>(
-        panel(`group/${ipGroup.id}/bulk/setIPLimit`),
+        panel(`group/${bulkGroup.id}/bulk/setIPLimit`),
         { maxIPs: Math.max(0, ipForm.maxIPs), enabled: ipForm.enabled },
         true,
       );
       if (r.success) {
         toast.success((r as { msg?: string }).msg || t("success", { defaultValue: "OK" }));
-        setIpGroup(null);
         void load();
       } else {
         toast.error((r as { msg?: string }).msg || t("fail", { defaultValue: "Error" }));
@@ -454,29 +456,20 @@ export function GroupsPage() {
   };
 
   const submitInbounds = async () => {
-    if (inboundGroup == null) return;
-    const selected = Object.entries(inboundIds)
-      .filter(([, v]) => v)
-      .map(([k]) => Number(k))
-      .filter((n) => n > 0);
-    if (selected.length === 0) {
-      toast.error(t("pages.groups.selectAtLeastOneInbound"));
-      return;
-    }
+    if (bulkGroup == null) return;
+    // Use the ordered list (subscription order) — backend persists slice order as sort_order.
+    const ordered = inboundOrder.filter((id) => inboundIds[id]);
     setInboundSubmitting(true);
     try {
       const r = await postJson<unknown>(
-        panel(`group/${inboundGroup.id}/bulk/assignInbounds`),
-        { inboundIds: selected, mode: "replace" },
+        panel(`group/${bulkGroup.id}/bulk/assignInbounds`),
+        { inboundIds: ordered, mode: "replace" },
         true,
       );
       if (r.success) {
         toast.success(
           (r as { msg?: string }).msg || t("pages.groups.inboundsAssigned"),
         );
-        inboundDraftGroupIdRef.current = null;
-        setInboundIds({});
-        setInboundGroup(null);
         void load();
       } else {
         toast.error(
@@ -649,67 +642,219 @@ export function GroupsPage() {
               </div>
             ) : null}
 
-            {/* Limits */}
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
+            {/* Limits — inline forms with per-row Apply button */}
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
                 {t("pages.groups.sectionLimits", { defaultValue: "Limits" })}
               </p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => openExpiryModal(bulkGroup)}
-                  disabled={bulkGroup.clientCount < 1}
-                >
-                  {t("pages.groups.bulkSetExpiry", { defaultValue: "Set expiry date" })}
-                </Button>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => openTrafficModal(bulkGroup)}
-                  disabled={bulkGroup.clientCount < 1}
-                >
-                  {t("pages.groups.bulkSetTrafficLimit", { defaultValue: "Set traffic limit" })}
-                </Button>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => openHwidModal(bulkGroup)}
-                  disabled={bulkGroup.clientCount < 1}
-                >
-                  {t("pages.groups.bulkSetHwidLimit")}
-                </Button>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => openIPModal(bulkGroup)}
-                  disabled={bulkGroup.clientCount < 1}
-                >
-                  {t("pages.groups.bulkSetIPLimit", { defaultValue: "Set IP limit" })}
-                </Button>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {/* Expiry */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs text-[var(--fg-muted)]" htmlFor="grp-expiry">
+                    {t("pages.groups.bulkSetExpiry", { defaultValue: "Set expiry date" })}
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="grp-expiry"
+                      type="datetime-local"
+                      value={expiryValue}
+                      onChange={(e) => setExpiryValue(e.target.value)}
+                    />
+                    <Button
+                      variant="secondary"
+                      type="button"
+                      loading={expirySubmitting}
+                      disabled={bulkGroup.clientCount < 1}
+                      onClick={() => void submitExpiry()}
+                    >
+                      {t("apply")}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-[var(--fg-subtle)]">
+                    {t("pages.groups.expiryDate", { defaultValue: "Leave blank for unlimited" })}
+                  </p>
+                </div>
+
+                {/* Traffic limit */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs text-[var(--fg-muted)]" htmlFor="grp-traffic">
+                    {t("pages.groups.bulkSetTrafficLimit", { defaultValue: "Set traffic limit" })}
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="grp-traffic"
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={String(trafficGB)}
+                      onChange={(e) => setTrafficGB(Math.max(0, parseFloat(e.target.value) || 0))}
+                    />
+                    <Button
+                      variant="secondary"
+                      type="button"
+                      loading={trafficSubmitting}
+                      disabled={bulkGroup.clientCount < 1}
+                      onClick={() => void submitTraffic()}
+                    >
+                      {t("apply")}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-[var(--fg-subtle)]">
+                    {t("pages.groups.trafficLimitGB", { defaultValue: "GB (0 = unlimited)" })}
+                  </p>
+                </div>
+
+                {/* HWID limit */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs text-[var(--fg-muted)]" htmlFor="grp-hwid">
+                    {t("pages.groups.bulkSetHwidLimit")}
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="grp-hwid"
+                      type="number"
+                      min={0}
+                      value={String(hwidForm.maxHwid)}
+                      onChange={(e) =>
+                        setHwidForm((f) => ({ ...f, maxHwid: Math.max(0, Number(e.target.value) || 0) }))
+                      }
+                    />
+                    <Button
+                      variant="secondary"
+                      type="button"
+                      loading={hwidSubmitting}
+                      disabled={bulkGroup.clientCount < 1}
+                      onClick={() => void submitHwid()}
+                    >
+                      {t("apply")}
+                    </Button>
+                  </div>
+                  <CheckboxField
+                    checked={hwidForm.enabled}
+                    onChange={(e) => setHwidForm((f) => ({ ...f, enabled: e.target.checked }))}
+                    label={t("pages.groups.hwidLimitEnabled")}
+                  />
+                </div>
+
+                {/* IP limit */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs text-[var(--fg-muted)]" htmlFor="grp-ip">
+                    {t("pages.groups.bulkSetIPLimit", { defaultValue: "Set IP limit" })}
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="grp-ip"
+                      type="number"
+                      min={0}
+                      value={String(ipForm.maxIPs)}
+                      onChange={(e) =>
+                        setIpForm((f) => ({ ...f, maxIPs: Math.max(0, Number(e.target.value) || 0) }))
+                      }
+                    />
+                    <Button
+                      variant="secondary"
+                      type="button"
+                      loading={ipSubmitting}
+                      disabled={bulkGroup.clientCount < 1}
+                      onClick={() => void submitIP()}
+                    >
+                      {t("apply")}
+                    </Button>
+                  </div>
+                  <CheckboxField
+                    checked={ipForm.enabled}
+                    onChange={(e) => setIpForm((f) => ({ ...f, enabled: e.target.checked }))}
+                    label={t("pages.groups.ipLimitEnabled", { defaultValue: "Enable IP limit" })}
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Routing */}
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
-                {t("pages.groups.sectionRouting", { defaultValue: "Routing" })}
-              </p>
-              <Button
-                variant="secondary"
-                type="button"
-                className="w-full"
-                onClick={() => openInboundsModal(bulkGroup)}
-                disabled={bulkGroup.clientCount < 1}
-                title={t("pages.groups.assignInboundsHint")}
-              >
+            {/* Inbounds — capsule chips + order list, like the client modal */}
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
                 {t("pages.groups.assignInbounds")}
-              </Button>
+              </p>
+              {inbounds.length === 0 ? (
+                <p className="text-xs text-[var(--fg-subtle)]">{t("noData")}</p>
+              ) : (
+                <>
+                  <div className="max-h-52 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
+                    <div className="flex flex-wrap gap-2" role="group">
+                      {inbounds.map((ib) => (
+                        <GroupInboundCapsule
+                          key={ib.id}
+                          selected={!!inboundIds[ib.id]}
+                          onToggle={() => toggleInboundId(ib.id)}
+                          label={ib.remark}
+                          sublabel={`${ib.protocol} · ${ib.port}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  {inboundOrder.length >= 2 ? (
+                    <div className="space-y-2 border-t border-[var(--border)] pt-3">
+                      <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--fg-subtle)]">
+                        {t("pages.clients.subscriptionInboundOrder", {
+                          defaultValue: "Subscription order",
+                        })}
+                      </p>
+                      {inboundOrder.map((iid, idx) => {
+                        const ib = inbounds.find((x) => x.id === iid);
+                        const label = ib?.remark || `Inbound ${iid}`;
+                        return (
+                          <div
+                            key={iid}
+                            className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5"
+                          >
+                            <span className="min-w-0 flex-1 truncate text-xs text-[var(--fg)]">{label}</span>
+                            <Button
+                              variant="secondary"
+                              type="button"
+                              className="!p-1.5"
+                              aria-label={t("pages.clients.moveInboundUp", { defaultValue: "Move up" })}
+                              disabled={idx === 0}
+                              onClick={() => moveInboundOrder(idx, -1)}
+                            >
+                              <ArrowUp size={14} />
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              type="button"
+                              className="!p-1.5"
+                              aria-label={t("pages.clients.moveInboundDown", { defaultValue: "Move down" })}
+                              disabled={idx >= inboundOrder.length - 1}
+                              onClick={() => moveInboundOrder(idx, 1)}
+                            >
+                              <ArrowDown size={14} />
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  <p className="text-[11px] text-[var(--fg-subtle)]">
+                    {t("pages.groups.assignInboundsHint")}
+                  </p>
+                  <div className="flex justify-end">
+                    <Button
+                      variant="primary"
+                      type="button"
+                      loading={inboundSubmitting}
+                      disabled={bulkGroup.clientCount < 1}
+                      onClick={() => void submitInbounds()}
+                    >
+                      {t("pages.groups.assign")}
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Status */}
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
                 {t("pages.groups.sectionStatus", { defaultValue: "Status" })}
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -733,8 +878,8 @@ export function GroupsPage() {
             </div>
 
             {/* Maintenance */}
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-subtle)]">
                 {t("pages.groups.sectionMaintenance", { defaultValue: "Maintenance" })}
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -836,274 +981,6 @@ export function GroupsPage() {
         </div>
       </Modal>
 
-      <Modal
-        open={hwidGroup != null}
-        onClose={() => {
-          if (!hwidSubmitting) setHwidGroup(null);
-        }}
-        title={t("pages.groups.bulkSetHwidLimitConfirm")}
-        width={480}
-        footer={
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button
-              variant="secondary"
-              type="button"
-              disabled={hwidSubmitting}
-              onClick={() => setHwidGroup(null)}
-            >
-              {t("cancel")}
-            </Button>
-            <Button
-              variant="primary"
-              type="button"
-              loading={hwidSubmitting}
-              onClick={() => void submitHwid()}
-            >
-              {t("apply")}
-            </Button>
-          </div>
-        }
-      >
-        {hwidGroup ? (
-          <div className="space-y-4 text-sm">
-            <p className="text-xs text-[var(--fg-muted)]">
-              {hwidGroup.name} · {t("pages.groups.clientDisplay", { count: hwidGroup.clientCount })}
-            </p>
-            <div>
-              <label
-                className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]"
-                htmlFor="hwid-max"
-              >
-                {t("pages.groups.maxHwid")}
-              </label>
-              <Input
-                id="hwid-max"
-                type="number"
-                min={0}
-                value={String(hwidForm.maxHwid)}
-                onChange={(e) =>
-                  setHwidForm((f) => ({
-                    ...f,
-                    maxHwid: Math.max(0, Number(e.target.value) || 0),
-                  }))
-                }
-              />
-            </div>
-            <CheckboxField
-              checked={hwidForm.enabled}
-              onChange={(e) =>
-                setHwidForm((f) => ({ ...f, enabled: e.target.checked }))
-              }
-              label={t("pages.groups.hwidLimitEnabled")}
-            />
-          </div>
-        ) : null}
-      </Modal>
-
-      {/* Expiry modal */}
-      <Modal
-        open={expiryGroup != null}
-        onClose={() => { if (!expirySubmitting) setExpiryGroup(null); }}
-        title={t("pages.groups.bulkSetExpiry", { defaultValue: "Set expiry date" })}
-        width={420}
-        footer={
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="secondary" type="button" disabled={expirySubmitting} onClick={() => setExpiryGroup(null)}>
-              {t("cancel")}
-            </Button>
-            <Button variant="primary" type="button" loading={expirySubmitting} onClick={() => void submitExpiry()}>
-              {t("apply")}
-            </Button>
-          </div>
-        }
-      >
-        {expiryGroup ? (
-          <div className="space-y-4 text-sm">
-            <p className="text-xs text-[var(--fg-muted)]">
-              {expiryGroup.name} · {t("pages.groups.clientDisplay", { count: expiryGroup.clientCount })}
-            </p>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="bulk-expiry-date">
-                {t("pages.groups.expiryDate", { defaultValue: "Expiry date (leave blank for unlimited)" })}
-              </label>
-              <Input
-                id="bulk-expiry-date"
-                type="datetime-local"
-                value={expiryValue}
-                onChange={(e) => setExpiryValue(e.target.value)}
-              />
-            </div>
-          </div>
-        ) : null}
-      </Modal>
-
-      {/* Traffic limit modal */}
-      <Modal
-        open={trafficGroup != null}
-        onClose={() => { if (!trafficSubmitting) setTrafficGroup(null); }}
-        title={t("pages.groups.bulkSetTrafficLimit", { defaultValue: "Set traffic limit" })}
-        width={420}
-        footer={
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="secondary" type="button" disabled={trafficSubmitting} onClick={() => setTrafficGroup(null)}>
-              {t("cancel")}
-            </Button>
-            <Button variant="primary" type="button" loading={trafficSubmitting} onClick={() => void submitTraffic()}>
-              {t("apply")}
-            </Button>
-          </div>
-        }
-      >
-        {trafficGroup ? (
-          <div className="space-y-4 text-sm">
-            <p className="text-xs text-[var(--fg-muted)]">
-              {trafficGroup.name} · {t("pages.groups.clientDisplay", { count: trafficGroup.clientCount })}
-            </p>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="bulk-traffic-gb">
-                {t("pages.groups.trafficLimitGB", { defaultValue: "Traffic limit (GB, 0 = unlimited)" })}
-              </label>
-              <Input
-                id="bulk-traffic-gb"
-                type="number"
-                min={0}
-                step={0.1}
-                value={String(trafficGB)}
-                onChange={(e) => setTrafficGB(Math.max(0, parseFloat(e.target.value) || 0))}
-              />
-            </div>
-          </div>
-        ) : null}
-      </Modal>
-
-      {/* IP limit modal */}
-      <Modal
-        open={ipGroup != null}
-        onClose={() => { if (!ipSubmitting) setIpGroup(null); }}
-        title={t("pages.groups.bulkSetIPLimit", { defaultValue: "Set IP limit" })}
-        width={420}
-        footer={
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="secondary" type="button" disabled={ipSubmitting} onClick={() => setIpGroup(null)}>
-              {t("cancel")}
-            </Button>
-            <Button variant="primary" type="button" loading={ipSubmitting} onClick={() => void submitIP()}>
-              {t("apply")}
-            </Button>
-          </div>
-        }
-      >
-        {ipGroup ? (
-          <div className="space-y-4 text-sm">
-            <p className="text-xs text-[var(--fg-muted)]">
-              {ipGroup.name} · {t("pages.groups.clientDisplay", { count: ipGroup.clientCount })}
-            </p>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="bulk-ip-max">
-                {t("pages.groups.maxIPs", { defaultValue: "Max concurrent IPs" })}
-              </label>
-              <Input
-                id="bulk-ip-max"
-                type="number"
-                min={0}
-                value={String(ipForm.maxIPs)}
-                onChange={(e) => setIpForm((f) => ({ ...f, maxIPs: Math.max(0, Number(e.target.value) || 0) }))}
-              />
-            </div>
-            <CheckboxField
-              checked={ipForm.enabled}
-              onChange={(e) => setIpForm((f) => ({ ...f, enabled: e.target.checked }))}
-              label={t("pages.groups.ipLimitEnabled", { defaultValue: "Enable IP limit" })}
-            />
-          </div>
-        ) : null}
-      </Modal>
-
-      <Modal
-        open={inboundGroup != null}
-        onClose={() => {
-          if (!inboundSubmitting) setInboundGroup(null);
-        }}
-        title={t("pages.groups.assignInboundsConfirm")}
-        width={520}
-        footer={
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button
-              variant="secondary"
-              type="button"
-              disabled={inboundSubmitting}
-              onClick={backToBulkFromInbounds}
-            >
-              {t("back", { defaultValue: "Back" })}
-            </Button>
-            <Button
-              variant="secondary"
-              type="button"
-              disabled={inboundSubmitting}
-              onClick={() => setInboundGroup(null)}
-            >
-              {t("cancel")}
-            </Button>
-            <Button
-              variant="primary"
-              type="button"
-              loading={inboundSubmitting}
-              onClick={() => void submitInbounds()}
-            >
-              {t("pages.groups.assign")}
-            </Button>
-          </div>
-        }
-      >
-        {inboundGroup ? (
-          <div className="space-y-3 text-sm">
-            <p className="text-xs text-[var(--fg-muted)]">
-              {t("pages.groups.assignInboundsHint")}
-            </p>
-            {inbounds.length === 0 ? (
-              <p className="text-xs text-[var(--fg-subtle)]">{t("noData")}</p>
-            ) : (
-              <CheckboxOptionList
-                layout="grid"
-                header={
-                  <SelectionListToolbar
-                    selectedCount={inbounds.filter((ib) => inboundIds[ib.id]).length}
-                    totalCount={inbounds.length}
-                    onSelectAll={() =>
-                      setInboundIds(
-                        Object.fromEntries(inbounds.map((ib) => [ib.id, true])),
-                      )
-                    }
-                    onSelectNone={() => setInboundIds({})}
-                    selectAllLabel={t("pages.groups.selectAllInbounds", {
-                      defaultValue: "Select all",
-                    })}
-                    selectNoneLabel={t("pages.groups.selectNoneInbounds", {
-                      defaultValue: "Clear",
-                    })}
-                  />
-                }
-              >
-                {inbounds.map((ib) => (
-                  <CheckboxOptionCard
-                    key={ib.id}
-                    icon={Layers}
-                    checked={!!inboundIds[ib.id]}
-                    onChange={(e) =>
-                      setInboundIds((m) => ({
-                        ...m,
-                        [ib.id]: e.target.checked,
-                      }))
-                    }
-                    heading={ib.remark?.trim() || `Inbound ${ib.id}`}
-                    description={`${ib.protocol} · :${ib.port}`}
-                  />
-                ))}
-              </CheckboxOptionList>
-            )}
-          </div>
-        ) : null}
-      </Modal>
 
       <ConfirmDialog
         open={deleteId != null}
