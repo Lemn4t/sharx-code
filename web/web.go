@@ -94,6 +94,8 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	// Avoid Gin's trailing-slash / case-fix redirects; they can emit relative Location (e.g. ./) and loops.
 	engine.RedirectTrailingSlash = false
 	engine.RedirectFixedPath = false
+	// Allow multipart uploads up to 256 MiB (geo files for some regions exceed the default 32 MiB).
+	engine.MaxMultipartMemory = 256 << 20
 
 	webDomain, err := s.settingService.GetWebDomain()
 	if err != nil {

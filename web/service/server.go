@@ -173,7 +173,10 @@ type ServerService struct {
 }
 
 const (
-	maxGeoFileUploadSize = 64 * 1024 * 1024
+	// maxGeoFileUploadSize caps individual geo-file uploads at 256 MiB.
+	// Gin's MaxMultipartMemory is set to the same value in web.go so that
+	// multipart parsing does not reject files before they reach this check.
+	maxGeoFileUploadSize = 256 * 1024 * 1024
 )
 
 type GeofileApplyResult struct {
