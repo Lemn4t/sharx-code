@@ -409,6 +409,8 @@ func (a *ClientGroupController) bulkSetHwidLimit(c *gin.Context) {
 }
 
 // bulkAssignInbounds assigns inbounds to all clients in a group.
+// The request body may include a "mode" field: "replace" (default) replaces each
+// client's inbound assignments with the supplied set; "add" adds without removing.
 func (a *ClientGroupController) bulkAssignInbounds(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -417,14 +419,18 @@ func (a *ClientGroupController) bulkAssignInbounds(c *gin.Context) {
 	}
 	user := session.GetLoginUser(c)
 	var req struct {
-		InboundIds []int `json:"inboundIds" form:"inboundIds"`
+		InboundIds []int  `json:"inboundIds" form:"inboundIds"`
+		Mode       string `json:"mode" form:"mode"`
 	}
 	err = c.ShouldBind(&req)
 	if err != nil {
 		jsonMsg(c, "Invalid request data", err)
 		return
 	}
-	if len(req.InboundIds) == 0 {
+	if req.Mode != "add" {
+		req.Mode = "replace"
+	}
+	if req.Mode == "add" && len(req.InboundIds) == 0 {
 		jsonMsg(c, "No inbounds selected", nil)
 		return
 	}
@@ -442,7 +448,7 @@ func (a *ClientGroupController) bulkAssignInbounds(c *gin.Context) {
 	for i, client := range clients {
 		clientIds[i] = client.Id
 	}
-	needRestart, err := a.clientService.BulkAssignInbounds(user.Id, clientIds, req.InboundIds)
+	needRestart, err := a.clientService.BulkAssignInbounds(user.Id, clientIds, req.InboundIds, req.Mode)
 	if err != nil {
 		logger.Errorf("Failed to assign inbounds for group: %v", err)
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
