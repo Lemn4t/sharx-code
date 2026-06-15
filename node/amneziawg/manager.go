@@ -20,9 +20,12 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/konstpic/sharx-code/v2/logger"
 )
+
+const sidecarStopTimeout = 8 * time.Second
 
 // Payload is one inbound's awg-quick config and interface name.
 type Payload struct {
@@ -60,6 +63,9 @@ func (m *Manager) RunningCount() int {
 type procState struct {
 	cancel context.CancelFunc
 	hash   string
+	cmd    *exec.Cmd
+	iface  string
+	done   chan struct{}
 }
 
 // NewManager creates an AmneziaWG sidecar manager.
@@ -115,14 +121,48 @@ func findAwgBinary() string {
 	return ""
 }
 
+func teardownWireGuardIface(iface string) {
+	iface = strings.TrimSpace(iface)
+	if iface == "" {
+		return
+	}
+	if out, err := exec.Command("ip", "link", "delete", iface).CombinedOutput(); err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" && !strings.Contains(msg, "Cannot find device") {
+			logger.Debugf("amneziawg: ip link delete %s: %v (%s)", iface, err, msg)
+		}
+	}
+}
+
+func (m *Manager) stopProc(st *procState) {
+	if st == nil {
+		return
+	}
+	if st.cancel != nil {
+		st.cancel()
+	}
+	if st.done != nil {
+		select {
+		case <-st.done:
+		case <-time.After(sidecarStopTimeout):
+			if st.cmd != nil && st.cmd.Process != nil {
+				_ = st.cmd.Process.Kill()
+				select {
+				case <-st.done:
+				case <-time.After(2 * time.Second):
+				}
+			}
+		}
+	}
+	teardownWireGuardIface(st.iface)
+}
+
 // Apply starts or updates sidecars.
 func (m *Manager) Apply(payloads []Payload) error {
 	m.mu.Lock()
 	if len(payloads) == 0 {
 		for tag, st := range m.running {
-			if st != nil && st.cancel != nil {
-				st.cancel()
-			}
+			m.stopProc(st)
 			delete(m.running, tag)
 		}
 		m.mu.Unlock()
@@ -150,9 +190,7 @@ func (m *Manager) Apply(payloads []Payload) error {
 
 	for tag, st := range m.running {
 		if _, ok := want[tag]; !ok {
-			if st != nil && st.cancel != nil {
-				st.cancel()
-			}
+			m.stopProc(st)
 			delete(m.running, tag)
 		}
 	}
@@ -169,18 +207,21 @@ func (m *Manager) Apply(payloads []Payload) error {
 		conf := p.Conf
 		h := sha256.Sum256([]byte(conf))
 		hhex := hex.EncodeToString(h[:])
-		if cur, ok := m.running[tag]; ok && cur != nil && cur.hash == hhex {
-			continue
-		}
-		if cur, ok := m.running[tag]; ok && cur != nil && cur.cancel != nil {
-			cur.cancel()
-			delete(m.running, tag)
-		}
 
 		iface := strings.TrimSpace(p.Iface)
 		if iface == "" {
-			iface = "awg-" + sanitizeIface(tag)
+			iface = ifaceForPayload(p)
 		}
+
+		if cur, ok := m.running[tag]; ok && cur != nil && cur.hash == hhex {
+			continue
+		}
+		if cur, ok := m.running[tag]; ok {
+			m.stopProc(cur)
+			delete(m.running, tag)
+		}
+		// Stale TUN from a prior crash / kernel AWG module may still hold the name.
+		teardownWireGuardIface(iface)
 
 		stateDir := filepath.Join(root, tag)
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
@@ -197,10 +238,21 @@ func (m *Manager) Apply(payloads []Payload) error {
 		cmd.Env = os.Environ()
 		cmd.Stdout = os.Stderr
 		cmd.Stderr = os.Stderr
+
+		done := make(chan struct{})
 		if err := cmd.Start(); err != nil {
 			cancel()
+			close(done)
 			return fmt.Errorf("amneziawg-go start %s: %w", tag, err)
 		}
+		go func(tag string, cmd *exec.Cmd, waitCtx context.Context, done chan struct{}) {
+			defer close(done)
+			err := cmd.Wait()
+			if err != nil && waitCtx.Err() == nil {
+				logger.Warningf("AmneziaWG-go exited: tag=%s err=%v", tag, err)
+			}
+		}(tag, cmd, ctx, done)
+
 		// UAPI socket must exist before awg setconf.
 		if awg := findAwgBinary(); awg != "" && conf != "" {
 			if err := exec.Command(awg, "setconf", iface, confPath).Run(); err != nil {
@@ -208,17 +260,22 @@ func (m *Manager) Apply(payloads []Payload) error {
 			}
 		}
 		logger.Infof("AmneziaWG-go started: tag=%s iface=%s pid=%d", tag, iface, cmd.Process.Pid)
-		go func(tag string, cmd *exec.Cmd, waitCtx context.Context) {
-			err := cmd.Wait()
-			if err != nil && waitCtx.Err() == nil {
-				logger.Warningf("AmneziaWG-go exited: tag=%s err=%v", tag, err)
-			}
-		}(tag, cmd, ctx)
 
-		m.running[tag] = &procState{cancel: cancel, hash: hhex}
+		m.running[tag] = &procState{cancel: cancel, hash: hhex, cmd: cmd, iface: iface, done: done}
 	}
 	m.commitReplaySnapshot(payloads)
 	return nil
+}
+
+func ifaceForPayload(p Payload) string {
+	if p.InboundId > 0 {
+		return fmt.Sprintf("awg%d", p.InboundId)
+	}
+	tag := strings.TrimSpace(p.Tag)
+	if tag == "" {
+		return "awg0"
+	}
+	return "awg-" + sanitizeIface(tag)
 }
 
 func sanitizeIface(tag string) string {
@@ -245,9 +302,7 @@ func (m *Manager) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for tag, st := range m.running {
-		if st != nil && st.cancel != nil {
-			st.cancel()
-		}
+		m.stopProc(st)
 		delete(m.running, tag)
 	}
 }

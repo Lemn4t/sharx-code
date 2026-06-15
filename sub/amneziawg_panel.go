@@ -88,7 +88,11 @@ func (s *SubService) buildAmneziaWgPanelInfo(inbound *model.Inbound, clientEmail
 		if pub, err := wireguardPublicKeyFromPrivateB64(secret); err == nil {
 			serverPub = pub
 			b.WriteString("Server public key: " + serverPub + "\n")
+		} else {
+			b.WriteString("Server public key: (invalid secretKey; must be 32-byte standard base64.)\n")
 		}
+	} else {
+		b.WriteString("Server public key: (missing — set secretKey in the inbound.)\n")
 	}
 
 	peers, _ := settings["peers"].([]any)
@@ -97,44 +101,14 @@ func (s *SubService) buildAmneziaWgPanelInfo(inbound *model.Inbound, clientEmail
 	peerMatch := findWireguardPeerForClientActiveOrInactive(settings, clientEmail)
 
 	if serverPub != "" {
-		b.WriteString("\n[Interface]\n")
-		if peerMatch != nil {
-			if priv, _ := peerMatch["privateKey"].(string); strings.TrimSpace(priv) != "" {
-				b.WriteString("PrivateKey = " + strings.TrimSpace(priv) + "\n")
-			}
-			if aip, ok := peerMatch["allowedIPs"].([]any); ok && len(aip) > 0 {
-				first := strings.TrimSpace(fmt.Sprint(aip[0]))
-				if first != "" {
-					if !strings.Contains(first, "/") {
-						first += "/32"
-					}
-					b.WriteString("Address = " + first + "\n")
+		appendWgQuickClientConf(&b, settings, clientEmail, firstEndpoint, serverPub, &wgQuickClientConfOpts{
+			writeInterfaceExtras: func(b *strings.Builder, settings map[string]any) {
+				if mtu, ok := settings["mtu"]; ok {
+					b.WriteString(fmt.Sprintf("MTU = %v\n", mtu))
 				}
-			}
-			if dns := wireguardClientDNSFromSettings(settings); len(dns) > 0 {
-				b.WriteString("DNS = " + strings.Join(dns, ", ") + "\n")
-			}
-		} else if dns := wireguardClientDNSFromSettings(settings); len(dns) > 0 {
-			b.WriteString("DNS = " + strings.Join(dns, ", ") + "\n")
-		}
-		if mtu, ok := settings["mtu"]; ok {
-			b.WriteString(fmt.Sprintf("MTU = %v\n", mtu))
-		}
-		service.AppendAmneziaWGObfuscationToConf(&b, amneziaWgObfuscationFromSettings(settings))
-		b.WriteString("\n[Peer]\n")
-		b.WriteString("PublicKey = " + serverPub + "\n")
-		if firstEndpoint != "" {
-			b.WriteString("Endpoint = " + firstEndpoint + "\n")
-		}
-		if peerMatch != nil {
-			if psk, _ := peerMatch["preSharedKey"].(string); strings.TrimSpace(psk) != "" {
-				b.WriteString("PresharedKey = " + strings.TrimSpace(psk) + "\n")
-			}
-			if ka := anyInt64(peerMatch["keepAlive"]); ka > 0 {
-				b.WriteString(fmt.Sprintf("PersistentKeepalive = %d\n", ka))
-			}
-		}
-		b.WriteString("AllowedIPs = 0.0.0.0/0, ::/0\n")
+				service.AppendAmneziaWGObfuscationToConf(b, amneziaWgObfuscationFromSettings(settings))
+			},
+		})
 	} else if len(peers) == 0 && len(inactivePeers) == 0 {
 		b.WriteString("\nNo peers yet — assign a client to this inbound to auto-create keys.\n")
 	} else if clientEmail != "" && peerMatch == nil {

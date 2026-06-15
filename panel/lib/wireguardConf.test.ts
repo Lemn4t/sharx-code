@@ -44,4 +44,19 @@ describe("wireguardConf", () => {
     expect(isWireGuardOnlySubscription(SPLIT_LINES)).toBe(true);
     expect(firstWireGuardConfFromLinks(SPLIT_LINES)).not.toBeNull();
   });
+
+  it("detects awg-only subscription with obfuscation lines", () => {
+    const awgPanel =
+      "AmneziaWG (UDP) — notes\n\n" +
+      "[Interface]\n" +
+      "PrivateKey = abc=\n" +
+      "Jc = 4\n" +
+      "H1 = 1\n\n" +
+      "[Peer]\n" +
+      "PublicKey = xyz=\n" +
+      "AllowedIPs = 0.0.0.0/0\n";
+    const lines = awgPanel.split("\n").map((l) => l.trim()).filter(Boolean);
+    expect(isWireGuardOnlySubscription(lines)).toBe(true);
+    expect(firstWireGuardConfFromLinks(lines)).toContain("Jc = 4");
+  });
 });

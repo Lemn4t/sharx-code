@@ -37,7 +37,7 @@ function isWireGuardPanelMetadataLine(line: string): boolean {
   if (extractWireGuardConfBlock(t)) return false;
   if (t.toLowerCase().startsWith("tg://proxy")) return false;
   if (/^\[Interface\]$/.test(t) || /^\[Peer\]$/.test(t)) return true;
-  if (/^(PrivateKey|Address|DNS|PublicKey|Endpoint|PresharedKey|PersistentKeepalive|AllowedIPs)\s*=/.test(t)) {
+  if (/^(PrivateKey|Address|DNS|MTU|PublicKey|Endpoint|PresharedKey|PersistentKeepalive|AllowedIPs|Jc|Jmin|Jmax|S1|S2|S3|S4|H1|H2|H3|H4)\s*=/.test(t)) {
     return true;
   }
   if (
@@ -61,6 +61,8 @@ function isWireGuardPanelMetadataLine(line: string): boolean {
     t.startsWith("PersistentKeepalive:") ||
     t.startsWith("Client private key") ||
     t.startsWith("No peer row is tagged") ||
+    t.startsWith("No peers yet") ||
+    t.startsWith("No peer row tagged for client") ||
     t.startsWith("(Assign an email")
   ) {
     return true;

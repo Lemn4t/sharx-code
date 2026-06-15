@@ -187,6 +187,13 @@ type AmneziaWGNodePayload struct {
 	Iface     string `json:"iface"`
 }
 
+func amneziaWgIfaceForInbound(inboundId int, tag string) string {
+	if inboundId > 0 {
+		return fmt.Sprintf("awg%d", inboundId)
+	}
+	return amneziaWgIfaceForTag(tag)
+}
+
 func amneziaWgIfaceForTag(tag string) string {
 	tag = strings.ToLower(strings.TrimSpace(tag))
 	var b strings.Builder
@@ -259,8 +266,10 @@ func BuildAmneziaWGServerConf(inbound *model.Inbound, settings map[string]any, l
 				parts = append(parts, fmt.Sprint(x))
 			}
 			out.WriteString("AllowedIPs = " + strings.Join(parts, ", ") + "\n")
+		} else if aip, ok := pm["allowedIPs"].([]string); ok && len(aip) > 0 {
+			out.WriteString("AllowedIPs = " + strings.Join(aip, ", ") + "\n")
 		} else {
-			out.WriteString("AllowedIPs = " + pk + "/32\n")
+			continue
 		}
 		if psk, _ := pm["preSharedKey"].(string); strings.TrimSpace(psk) != "" {
 			out.WriteString("PresharedKey = " + strings.TrimSpace(psk) + "\n")
@@ -312,7 +321,7 @@ func BuildAmneziaWgPayloadsStandalone() ([]AmneziaWGNodePayload, error) {
 			InboundId: ib.Id,
 			Tag:       tag,
 			Conf:      conf,
-			Iface:     amneziaWgIfaceForTag(tag),
+			Iface:     amneziaWgIfaceForInbound(ib.Id, tag),
 		})
 	}
 	return out, nil
@@ -365,7 +374,7 @@ func BuildAmneziaWgPayloadsForNode(node *model.Node, ibs []*model.Inbound) ([]Am
 			InboundId: ib.Id,
 			Tag:       tag,
 			Conf:      conf,
-			Iface:     amneziaWgIfaceForTag(tag),
+			Iface:     amneziaWgIfaceForInbound(ib.Id, tag),
 		})
 	}
 	return out, nil

@@ -236,43 +236,56 @@ func (s *SubService) buildWireguardPanelInfo(inbound *model.Inbound, clientEmail
 	}
 
 	if serverPub != "" {
-		peerMatch := findWireguardPeerForClientActiveOrInactive(settings, clientEmail)
-		b.WriteString("[Interface]\n")
-		if peerMatch != nil {
-			if priv, _ := peerMatch["privateKey"].(string); strings.TrimSpace(priv) != "" {
-				b.WriteString("PrivateKey = " + strings.TrimSpace(priv) + "\n")
-			}
-			if aip, ok := peerMatch["allowedIPs"].([]any); ok && len(aip) > 0 {
-				first := strings.TrimSpace(fmt.Sprint(aip[0]))
-				if first != "" {
-					if !strings.Contains(first, "/") {
-						first += "/32"
-					}
-					b.WriteString("Address = " + first + "\n")
-				}
-			}
-			if dns := wireguardClientDNSFromSettings(settings); len(dns) > 0 {
-				b.WriteString("DNS = " + strings.Join(dns, ", ") + "\n")
-			}
-		} else if dns := wireguardClientDNSFromSettings(settings); len(dns) > 0 {
-			b.WriteString("DNS = " + strings.Join(dns, ", ") + "\n")
-		}
-		b.WriteString("\n[Peer]\n")
-		b.WriteString("PublicKey = " + serverPub + "\n")
-		if firstEndpoint != "" {
-			b.WriteString("Endpoint = " + firstEndpoint + "\n")
-		}
-		if peerMatch != nil {
-			if psk, _ := peerMatch["preSharedKey"].(string); strings.TrimSpace(psk) != "" {
-				b.WriteString("PresharedKey = " + strings.TrimSpace(psk) + "\n")
-			}
-			if ka := anyInt64(peerMatch["keepAlive"]); ka > 0 {
-				b.WriteString(fmt.Sprintf("PersistentKeepalive = %d\n", ka))
-			}
-		}
-		b.WriteString("AllowedIPs = 0.0.0.0/0, ::/0\n")
+		appendWgQuickClientConf(&b, settings, clientEmail, firstEndpoint, serverPub, nil)
 	}
 	return strings.TrimSpace(b.String()) + "\n"
+}
+
+type wgQuickClientConfOpts struct {
+	writeInterfaceExtras func(b *strings.Builder, settings map[string]any)
+}
+
+func appendWgQuickClientConf(b *strings.Builder, settings map[string]any, clientEmail, firstEndpoint, serverPub string, opts *wgQuickClientConfOpts) {
+	peerMatch := findWireguardPeerForClientActiveOrInactive(settings, clientEmail)
+
+	b.WriteString("\n[Interface]\n")
+	if peerMatch != nil {
+		if priv, _ := peerMatch["privateKey"].(string); strings.TrimSpace(priv) != "" {
+			b.WriteString("PrivateKey = " + strings.TrimSpace(priv) + "\n")
+		}
+		if aip, ok := peerMatch["allowedIPs"].([]any); ok && len(aip) > 0 {
+			first := strings.TrimSpace(fmt.Sprint(aip[0]))
+			if first != "" {
+				if !strings.Contains(first, "/") {
+					first += "/32"
+				}
+				b.WriteString("Address = " + first + "\n")
+			}
+		}
+		if dns := wireguardClientDNSFromSettings(settings); len(dns) > 0 {
+			b.WriteString("DNS = " + strings.Join(dns, ", ") + "\n")
+		}
+	} else if dns := wireguardClientDNSFromSettings(settings); len(dns) > 0 {
+		b.WriteString("DNS = " + strings.Join(dns, ", ") + "\n")
+	}
+	if opts != nil && opts.writeInterfaceExtras != nil {
+		opts.writeInterfaceExtras(b, settings)
+	}
+
+	b.WriteString("\n[Peer]\n")
+	b.WriteString("PublicKey = " + serverPub + "\n")
+	if firstEndpoint != "" {
+		b.WriteString("Endpoint = " + firstEndpoint + "\n")
+	}
+	if peerMatch != nil {
+		if psk, _ := peerMatch["preSharedKey"].(string); strings.TrimSpace(psk) != "" {
+			b.WriteString("PresharedKey = " + strings.TrimSpace(psk) + "\n")
+		}
+		if ka := anyInt64(peerMatch["keepAlive"]); ka > 0 {
+			b.WriteString(fmt.Sprintf("PersistentKeepalive = %d\n", ka))
+		}
+	}
+	b.WriteString("AllowedIPs = 0.0.0.0/0, ::/0\n")
 }
 
 // wireguardConfBlockFromPanelInfo extracts the wg-quick [Interface]/[Peer] section from panel info text.
