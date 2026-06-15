@@ -2492,7 +2492,7 @@ export function InboundsPage() {
                   <p className="text-xs text-[var(--fg-subtle)]">
                     {t("pages.inbounds.hysteriaTlsHint", {
                       defaultValue:
-                        "QUIC uses TLS like 3x-ui: SNI, ALPN (usually h3), certificate paths (optional — panel default cert is applied if empty).",
+                        "QUIC uses standard TLS: SNI, ALPN (usually h3), certificate paths (optional — panel default cert is applied if empty).",
                     })}
                   </p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -3395,7 +3395,7 @@ export function InboundsPage() {
                       <p className="text-xs text-[var(--fg-subtle)]">
                         {t("pages.inbounds.xhttpHint", {
                           defaultValue:
-                            "XHTTP (SplitHTTP) — same fields as 3x-ui / Xray xhttpSettings (request headers, mode, padding, session, uplink).",
+                            "XHTTP (SplitHTTP) — same fields as Xray xhttpSettings (request headers, mode, padding, session, uplink).",
                         })}
                       </p>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

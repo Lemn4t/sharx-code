@@ -48,11 +48,11 @@ body:
       required: false
 
   - type: input
-    id: xui-version
+    id: sharx-version
     attributes:
-      label: 3x-ui Version
-      description: Which version of 3x-ui are you using?
-      placeholder: 2.X.X
+      label: SharX Version
+      description: Which version of SharX are you using?
+      placeholder: 1.6.0
     validations:
       required: true
 

@@ -1,6 +1,6 @@
 ## Release v1.0.0
 
-**SharX** is a fork of the original **3XUI** panel with enhanced features and monitoring capabilities.
+**SharX** is a modern multi-node Xray management platform with Docker-first deployment, observability hooks, and a visual subscription page builder.
 
 ### ✨ Key Features
 

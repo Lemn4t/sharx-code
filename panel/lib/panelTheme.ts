@@ -11,7 +11,7 @@ export const PANEL_THEME_IDS = [
   "midnight",
   "ember",
   "boreal",
-  /** 3x-ui dark “Classic” palette (`--color-primary-100`, `--dark-color-*` in custom.min.css) */
+  /** SharX dark “Classic” palette (`--color-primary-100`, `--dark-color-*` in custom.min.css) */
   "xuiClassic",
   /** Deep space + gold / lightsaber accents */
   "starWars",
