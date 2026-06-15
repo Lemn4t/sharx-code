@@ -1,3 +1,14 @@
+/** WireGuard and AmneziaWG subscription keys share the same wg-quick .conf block. */
+export function isWgQuickConfProtocol(protocol: string | null | undefined): boolean {
+  const p = (protocol ?? "").trim().toLowerCase();
+  return p === "wireguard" || p === "amneziawg";
+}
+
+/** wg-quick block for QR / .conf export from panel or subscription text. */
+export function wgQuickConfFromPanelText(text: string): string | null {
+  return extractWireGuardConfBlock(text);
+}
+
 /**
  * Extract the wg-quick `[Interface]` / `[Peer]` block from panel WireGuard info text.
  * Must not match descriptive lines like "Client DNS (for [Interface]):" — only a

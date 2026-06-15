@@ -3,8 +3,10 @@ import {
   extractWireGuardConfBlock,
   firstWireGuardConfFromLinks,
   hasWireGuardSubscription,
+  isWgQuickConfProtocol,
   isWireGuardOnlySubscription,
   reconstructWireGuardConfFromLinks,
+  wgQuickConfFromPanelText,
 } from "./wireguardConf";
 
 const SAMPLE_PANEL =
@@ -43,6 +45,21 @@ describe("wireguardConf", () => {
   it("detects wg-only subscription from split lines", () => {
     expect(isWireGuardOnlySubscription(SPLIT_LINES)).toBe(true);
     expect(firstWireGuardConfFromLinks(SPLIT_LINES)).not.toBeNull();
+  });
+
+  it("recognizes amneziawg as wg-quick protocol", () => {
+    expect(isWgQuickConfProtocol("amneziawg")).toBe(true);
+    expect(isWgQuickConfProtocol("wireguard")).toBe(true);
+    expect(isWgQuickConfProtocol("vless")).toBe(false);
+  });
+
+  it("extracts conf from amneziawg panel text for QR", () => {
+    const panel =
+      "AmneziaWG (UDP) — notes\n\nEndpoint: example.com:51820\n\n" +
+      "[Interface]\nPrivateKey = abc=\nJc = 4\n\n[Peer]\nPublicKey = xyz=\n";
+    const conf = wgQuickConfFromPanelText(panel);
+    expect(conf).toContain("[Interface]");
+    expect(conf).not.toContain("AmneziaWG (UDP)");
   });
 
   it("detects awg-only subscription with obfuscation lines", () => {

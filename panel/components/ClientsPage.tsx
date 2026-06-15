@@ -46,7 +46,10 @@ import {
   speedMbpsFormat,
 } from "@/lib/format";
 import { panel } from "@/lib/paths";
-import { extractWireGuardConfBlock } from "@/lib/wireguardConf";
+import {
+  isWgQuickConfProtocol,
+  wgQuickConfFromPanelText,
+} from "@/lib/wireguardConf";
 import { getUiPref, setUiPref } from "@/lib/uiPrefs";
 import { CompareModeFilterField, type CompareOp } from "@/components/CompareModeFilterField";
 import { PageScaffold, PageHeader, SectionHelpModal, Surface } from "@/components/panel";
@@ -4489,11 +4492,11 @@ export function ClientsPage() {
         ) : (
           <div className="max-h-[60vh] space-y-4 overflow-y-auto text-sm">
             {keysRows.map((row) => {
-              // For WireGuard, QR codes must contain only the [Interface]/[Peer] conf block.
-              const wgConfText =
-                row.protocol === "wireguard"
-                  ? extractWireGuardConfBlock(row.link)
-                  : null;
+              // WireGuard / AmneziaWG QR must contain only the wg-quick [Interface]/[Peer] block.
+              const usesWgQuickConf = isWgQuickConfProtocol(row.protocol);
+              const wgConfText = usesWgQuickConf
+                ? wgQuickConfFromPanelText(row.link)
+                : null;
               const qrText = wgConfText ?? row.link;
               const keyQrTooLong = qrText.length > 2500;
               return (
@@ -4512,6 +4515,14 @@ export function ClientsPage() {
                     })}
                   </p>
                 ) : null}
+                {row.protocol === "amneziawg" ? (
+                  <p className="mb-2 text-xs text-[var(--fg-subtle)]">
+                    {t("pages.clients.keysAmneziaWgHint", {
+                      defaultValue:
+                        "AmneziaWG uses a WireGuard-style .conf block. QR encodes only [Interface]/[Peer] for the AmneziaWG app — import the .conf file if scanning fails.",
+                    })}
+                  </p>
+                ) : null}
                 {row.protocol === "telemt" ? (
                   <p className="mb-2 text-xs text-[var(--fg-subtle)]">
                     {t("pages.clients.keysTelemtHint", {
@@ -4523,7 +4534,7 @@ export function ClientsPage() {
                 <pre
                   className={cx(
                     "overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[var(--surface)] p-2 font-mono text-[11px] text-[var(--fg-muted)]",
-                    row.protocol === "wireguard" ? "max-h-[min(50vh,22rem)]" : "max-h-36",
+                    usesWgQuickConf ? "max-h-[min(50vh,22rem)]" : "max-h-36",
                   )}
                 >
                   {row.link}
@@ -4536,18 +4547,18 @@ export function ClientsPage() {
                     onClick={() => copyText(row.link)}
                   >
                     <Copy size={12} className="mr-1 inline" />
-                    {row.protocol === "wireguard"
+                    {usesWgQuickConf
                       ? t("pages.clients.copyWireGuardDetails", { defaultValue: "Copy" })
                       : t("copy")}
                   </Button>
-                  {row.protocol === "wireguard" ? (
+                  {usesWgQuickConf ? (
                     <Button
                       type="button"
                       variant="secondary"
                       className="!h-8 !text-xs"
                       onClick={() => {
                         const conf =
-                          extractWireGuardConfBlock(row.link) ?? row.link;
+                          wgQuickConfFromPanelText(row.link) ?? row.link;
                         const blob = new Blob([conf], { type: "text/plain;charset=utf-8" });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement("a");
