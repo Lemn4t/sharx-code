@@ -58,6 +58,8 @@ func (j *XrayTrafficJob) Run() {
 	}
 
 	service.MergeLocalTelemtTrafficIntoXrayStats(&traffics, &clientTraffics)
+	var awgOnline []string
+	service.MergeLocalAmneziaWgTrafficIntoXrayStats(&traffics, &clientTraffics, &awgOnline)
 
 	err, needRestart0 := j.inboundService.AddTraffic(traffics, clientTraffics)
 	if err != nil {
@@ -91,6 +93,10 @@ func (j *XrayTrafficJob) Run() {
 	}
 	if needRestart0 || needRestart1 {
 		j.xrayService.SetToNeedRestart()
+	}
+
+	if len(awgOnline) > 0 {
+		service.AppendPanelOnlineClients(service.RemapWireGuardStatEmailsList(awgOnline))
 	}
 
 	// Broadcast WebSocket events (same for both modes)

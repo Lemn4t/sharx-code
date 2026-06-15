@@ -962,16 +962,35 @@ func (s *ClientService) syncInboundTrafficFromClients(tx *gorm.DB, inboundIds ma
 	return nil
 }
 
-// remapWireGuardStatEmailsToClientNames maps Xray stat keys that use WireGuard publicKey
-// instead of panel client name (email) back to the client name used in ClientEntity.
-func (s *ClientService) remapWireGuardStatEmailsToClientNames(traffics []*xray.ClientTraffic) []*xray.ClientTraffic {
-	if len(traffics) == 0 {
-		return traffics
+// RemapWireGuardStatEmailsList maps WireGuard/AmneziaWG public keys to panel client names.
+func RemapWireGuardStatEmailsList(emails []string) []string {
+	if len(emails) == 0 {
+		return emails
 	}
+	pubKeyToClient := (&ClientService{}).wireGuardPubKeyToClientMap()
+	if len(pubKeyToClient) == 0 {
+		return emails
+	}
+	out := make([]string, 0, len(emails))
+	for _, e := range emails {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		if name, ok := pubKeyToClient[strings.ToLower(e)]; ok && name != "" {
+			out = append(out, name)
+		} else {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func (s *ClientService) wireGuardPubKeyToClientMap() map[string]string {
 	db := database.GetDB()
 	var wgInbounds []model.Inbound
-	if err := db.Where("LOWER(protocol) = ?", string(model.WireGuard)).Find(&wgInbounds).Error; err != nil || len(wgInbounds) == 0 {
-		return traffics
+	if err := db.Where("LOWER(protocol) IN ?", []string{string(model.WireGuard), string(model.AmneziaWG)}).Find(&wgInbounds).Error; err != nil || len(wgInbounds) == 0 {
+		return nil
 	}
 	pubKeyToClient := make(map[string]string)
 	for _, inb := range wgInbounds {
@@ -993,6 +1012,19 @@ func (s *ClientService) remapWireGuardStatEmailsToClientNames(traffics []*xray.C
 			pubKeyToClient[strings.ToLower(pk)] = clientName
 		}
 	}
+	if len(pubKeyToClient) == 0 {
+		return nil
+	}
+	return pubKeyToClient
+}
+
+// remapWireGuardStatEmailsToClientNames maps Xray stat keys that use WireGuard publicKey
+// instead of panel client name (email) back to the client name used in ClientEntity.
+func (s *ClientService) remapWireGuardStatEmailsToClientNames(traffics []*xray.ClientTraffic) []*xray.ClientTraffic {
+	if len(traffics) == 0 {
+		return traffics
+	}
+	pubKeyToClient := s.wireGuardPubKeyToClientMap()
 	if len(pubKeyToClient) == 0 {
 		return traffics
 	}

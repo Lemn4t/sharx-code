@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { appFaviconUrl } from "./subscriptionAppIcons";
 import { hasWireGuardSubscription, isWireGuardOnlySubscription } from "./wireguardConf";
+import { hasAmneziaVpnImportLink } from "./amneziaVpnImportLink";
 import {
   SUB_PAGE_COLOR_PRESET_DEFAULT,
   subPageColorPresetSchema,
@@ -71,6 +72,8 @@ export type AppCatalogEntry = {
   wireguardOnly?: boolean;
   /** Prefer JSON subscription URL in deep links (e.g. sing-box). */
   preferJsonUrl?: boolean;
+  /** Use first vless/vmess/vpn:// line from subscription (AmneziaVPN app). */
+  preferFirstProtocolLink?: boolean;
 };
 
 /**
@@ -80,6 +83,7 @@ export type AppCatalogEntry = {
  *   {b64Url}          — base64 of raw URL (e.g. shadowrocket-style)
  *   {urlJson}         — JSON subscription URL (when available)
  *   {urlJsonEncoded}  — URL-encoded JSON URL
+ *   {firstLink}       — first vless/vmess/trojan/ss/vpn:// line (AmneziaVPN)
  *   {happEncrypted}   — server-provided happ://crypt4/... URL
  *   {v2raytunEncrypted}
  */
@@ -214,8 +218,10 @@ export const APP_CATALOG: Record<SubscriptionApp, AppCatalogEntry> = {
   amneziavpn: {
     label: "AmneziaVPN",
     platforms: ["ios", "android", "windows", "macos", "linux"],
-    deepLinkTemplate: "amnezia://add?config={urlEncoded}",
+    /** AmneziaVPN imports vless/vmess/trojan/ss/vpn:// keys — not https subscription URLs. */
+    deepLinkTemplate: "{firstLink}",
     supportsEncrypted: false,
+    preferFirstProtocolLink: true,
     iconUrl: appFaviconUrl("amnezia.org"),
   },
   amneziawg: {
@@ -441,6 +447,7 @@ export function filterAppsForSubscriptionProtocol<T extends { app: SubscriptionA
   const filtered = apps.filter((e) => {
     if (e.enabled === false) return false;
     const cat = APP_CATALOG[e.app];
+    if (e.app === "amneziavpn") return hasAmneziaVpnImportLink(links);
     if (cat?.wireguardOnly) return hasWg;
     return !wgOnly;
   });

@@ -50,7 +50,7 @@ WORKDIR /build
 FROM alpine:latest
 ARG TARGETARCH
 
-RUN apk --no-cache add ca-certificates tzdata conntrack-tools
+RUN apk --no-cache add ca-certificates tzdata conntrack-tools iptables
 
 WORKDIR /app
 

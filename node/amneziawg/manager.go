@@ -38,8 +38,9 @@ type Payload struct {
 	Tag           string `json:"tag"`
 	Conf          string `json:"conf"`
 	Iface         string `json:"iface"`
-	TunnelAddress string `json:"tunnelAddress,omitempty"`
-	TunnelSubnet  string `json:"tunnelSubnet,omitempty"`
+	TunnelAddress string            `json:"tunnelAddress,omitempty"`
+	TunnelSubnet  string            `json:"tunnelSubnet,omitempty"`
+	PeerEmails    map[string]string `json:"peerEmails,omitempty"`
 }
 
 // Manager supervises one amneziawg-go process per inbound tag.
@@ -75,6 +76,7 @@ type procState struct {
 	done       chan struct{}
 	configured bool
 	confPath   string
+	peerEmails map[string]string
 }
 
 // NewManager creates an AmneziaWG sidecar manager.
@@ -255,7 +257,10 @@ func ensureTunnelRouting(iface, subnet string) {
 		subnet = "10.8.0.0/24"
 	}
 	if out, err := exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1").CombinedOutput(); err != nil {
-		logger.Warningf("amneziawg sysctl ip_forward: %v (%s)", err, strings.TrimSpace(string(out)))
+		msg := strings.TrimSpace(string(out))
+		if !strings.Contains(msg, "Read-only file system") {
+			logger.Warningf("amneziawg sysctl ip_forward: %v (%s)", err, msg)
+		}
 	}
 	iptablesEnsureAppend("", "FORWARD", "-i", iface, "-j", "ACCEPT")
 	iptablesEnsureAppend("", "FORWARD", "-o", iface, "-j", "ACCEPT")
@@ -416,6 +421,7 @@ func (m *Manager) Apply(payloads []Payload) error {
 				retry.Iface = cur.iface
 				if applyAwgSetconf(tag, retry, cur.confPath) {
 					cur.configured = true
+					cur.peerEmails = copyPeerEmails(p.PeerEmails)
 				}
 			}
 			continue
@@ -463,7 +469,7 @@ func (m *Manager) Apply(payloads []Payload) error {
 
 		m.running[tag] = &procState{
 			cancel: cancel, hash: hhex, cmd: cmd, iface: iface, done: done,
-			configured: configured, confPath: confPath,
+			configured: configured, confPath: confPath, peerEmails: copyPeerEmails(p.PeerEmails),
 		}
 	}
 	m.commitReplaySnapshot(payloads)
@@ -479,6 +485,17 @@ func ifaceForPayload(p Payload) string {
 		return "awg0"
 	}
 	return "awg-" + sanitizeIface(tag)
+}
+
+func copyPeerEmails(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func sanitizeIface(tag string) string {

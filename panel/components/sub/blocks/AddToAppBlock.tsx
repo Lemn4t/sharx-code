@@ -8,6 +8,11 @@ import {
   type AppButton,
   type BlockAddToApp,
 } from "@/lib/sharxSubpageConfig";
+import {
+  amneziaVpnKeyDisplayLabel,
+  firstAmneziaVpnImportLink,
+  listAmneziaVpnImportLinks,
+} from "@/lib/amneziaVpnImportLink";
 import { resolveMtProtoLinks, tgProxyDisplayLabel } from "../types";
 import shell from "../subscription-shell.module.css";
 import type { BlockRenderContext } from "./index";
@@ -34,6 +39,7 @@ type SubstitutionVars = {
   b64Url: string;
   urlJson: string;
   urlJsonEncoded: string;
+  firstLink: string;
   happEncrypted: string;
   v2raytunEncrypted: string;
 };
@@ -45,6 +51,7 @@ function substitute(template: string, vars: SubstitutionVars): string {
     .replace(/\{b64Url\}/g, vars.b64Url)
     .replace(/\{urlJson\}/g, vars.urlJson)
     .replace(/\{urlJsonEncoded\}/g, vars.urlJsonEncoded)
+    .replace(/\{firstLink\}/g, vars.firstLink)
     .replace(/\{happEncrypted\}/g, vars.happEncrypted)
     .replace(/\{v2raytunEncrypted\}/g, vars.v2raytunEncrypted);
 }
@@ -57,11 +64,13 @@ function makeSubstitutionVars(opts: {
   v2raytunEncryptedUrl?: string;
   preferJsonUrl?: boolean;
   app?: AppButton["app"];
+  links?: string[];
 }): SubstitutionVars {
   const catalog = opts.app ? APP_CATALOG[opts.app] : undefined;
   const preferJson =
     (opts.preferJsonUrl || catalog?.preferJsonUrl) && opts.subscriptionJsonUrl;
   const base = preferJson ? opts.subscriptionJsonUrl! : opts.subscriptionUrl;
+  const firstLink = firstAmneziaVpnImportLink(opts.links ?? []);
   return {
     url: base,
     urlEncoded: encodeURIComponent(base),
@@ -70,6 +79,7 @@ function makeSubstitutionVars(opts: {
     urlJsonEncoded: opts.subscriptionJsonUrl
       ? encodeURIComponent(opts.subscriptionJsonUrl)
       : "",
+    firstLink: firstLink ?? "",
     happEncrypted: opts.happEncryptedUrl ?? "",
     v2raytunEncrypted: opts.v2raytunEncryptedUrl ?? "",
   };
@@ -80,7 +90,8 @@ function renderButtons(
   button: AppButton,
   vars: SubstitutionVars,
   tgProxyLinks: string[],
-  subscriptionJsonUrl?: string,
+  subscriptionJsonUrl: string | undefined,
+  subLinks: string[],
 ): RenderedButton[] {
   if (button.enabled === false) return [];
   const catalog = APP_CATALOG[button.app];
@@ -89,6 +100,18 @@ function renderButtons(
 
   if (button.app === "amneziawg") {
     return [];
+  }
+
+  if (button.app === "amneziavpn") {
+    const keys = listAmneziaVpnImportLinks(subLinks);
+    if (keys.length === 0) return [];
+    return keys.map((href, i) => ({
+      id: keys.length > 1 ? `${button.id}-${i}` : button.id,
+      label: keys.length > 1 ? `${label} · ${amneziaVpnKeyDisplayLabel(href, i)}` : label,
+      href,
+      iconUrl,
+      platforms: button.platforms,
+    }));
   }
 
   if (button.app === "telegram") {
@@ -181,9 +204,11 @@ export function AddToAppBlock({
           v2raytunEncryptedUrl: data.v2raytunEncryptedUrl,
           preferJsonUrl,
           app: b.app,
+          links,
         }),
         tgProxyLinks,
         subscriptionJsonUrl,
+        links,
       ),
     )
     .filter((r): r is RenderedButton => r !== null);

@@ -18,6 +18,10 @@ import {
   type SupportedPlatform,
 } from "@/lib/sharxSubpageConfig";
 import { firstWireGuardConfFromLinks } from "@/lib/wireguardConf";
+import {
+  amneziaVpnKeyDisplayLabel,
+  listAmneziaVpnImportLinks,
+} from "@/lib/amneziaVpnImportLink";
 import { resolveMtProtoLinks, tgProxyDisplayLabel } from "../types";
 import { PlatformBrandIcon } from "../PlatformBrandIcon";
 import shell from "../subscription-shell.module.css";
@@ -96,19 +100,21 @@ function base64Url(input: string): string {
 type TemplateVars = {
   url: string;
   urlJson: string;
+  firstLink: string;
 };
 
 function expandTemplate(template: string, vars: TemplateVars): string {
   if (!template) return "";
   const primary = vars.url;
-  if (!primary && !vars.urlJson) return "";
+  if (!primary && !vars.urlJson && !vars.firstLink) return "";
   const url = primary || vars.urlJson;
   return template
     .replace(/\{url\}/g, url)
     .replace(/\{urlEncoded\}/g, encodeURIComponent(url))
     .replace(/\{b64Url\}/g, base64Url(url))
     .replace(/\{urlJson\}/g, vars.urlJson)
-    .replace(/\{urlJsonEncoded\}/g, vars.urlJson ? encodeURIComponent(vars.urlJson) : "");
+    .replace(/\{urlJsonEncoded\}/g, vars.urlJson ? encodeURIComponent(vars.urlJson) : "")
+    .replace(/\{firstLink\}/g, vars.firstLink);
 }
 
 function subscriptionUrlForApp(
@@ -119,6 +125,32 @@ function subscriptionUrlForApp(
   const catalog = APP_CATALOG[app];
   if (catalog?.preferJsonUrl && subscriptionJsonUrl) return subscriptionJsonUrl;
   return subscriptionUrl;
+}
+
+function defaultAmneziaVpnSteps(
+  appLabel: string,
+  hasDownload: boolean,
+  t: BlockRenderContext["t"],
+): InstallationStep[] {
+  return [
+    {
+      title: t("pages.publicSub.step.install.title", { defaultValue: "Install the app" }),
+      text: hasDownload
+        ? t("pages.publicSub.step.install.textDownload", { defaultValue: "Download {{app}} using the button below.", app: appLabel })
+        : t("pages.publicSub.step.install.textStore", { defaultValue: "Install {{app}} from the official store for your platform.", app: appLabel }),
+    },
+    {
+      title: t("pages.publicSub.stepAmneziaVpn.import.title", { defaultValue: "Import connection key" }),
+      text: t("pages.publicSub.stepAmneziaVpn.import.text", {
+        defaultValue:
+          "In AmneziaVPN tap + → for each server import one connection key below (paste, scan QR, or save as a file). AmneziaVPN has no subscription URL — add keys one by one. For AmneziaWG tunnels use the AmneziaWG card and .conf instead.",
+      }),
+    },
+    {
+      title: t("pages.publicSub.step.connect.title", { defaultValue: "Connect" }),
+      text: t("pages.publicSub.step.connect.text", { defaultValue: "Pick a server and turn the tunnel on. That's it." }),
+    },
+  ];
 }
 
 function defaultAmneziaWgSteps(
@@ -218,6 +250,7 @@ type DetailProps = {
   subscriptionUrl: string;
   subscriptionJsonUrl: string;
   wireguardConf: string | null;
+  links: string[];
   showDeeplinks: boolean;
   showQrCodes: boolean;
   interactive: boolean;
@@ -340,6 +373,67 @@ function ActionButton({
       {action.icon}
       {action.label}
     </button>
+  );
+}
+
+function AmneziaVpnKeyList({
+  keys,
+  showQrCodes,
+  interactive,
+  onCopyLink,
+  onShowQr,
+  t,
+}: {
+  keys: string[];
+  showQrCodes: boolean;
+  interactive: boolean;
+  onCopyLink: (url: string) => void;
+  onShowQr: (url: string, title: string) => void;
+  t: BlockRenderContext["t"];
+}) {
+  return (
+    <div className="space-y-2">
+      {keys.map((link, i) => {
+        const label = amneziaVpnKeyDisplayLabel(link, i);
+        return (
+          <div
+            key={`${link}-${i}`}
+            className="rounded-lg border border-[var(--sub-border,rgba(255,255,255,0.08))] bg-[var(--sub-surface,rgba(255,255,255,0.04))] p-3"
+          >
+            <div className="mb-2 text-[12px] font-medium text-[var(--sub-fg-strong,#fff)]">
+              {label}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ActionButton
+                interactive={interactive}
+                action={{
+                  label: t("pages.publicSub.amneziaVpn.importKey", { defaultValue: "Import key" }),
+                  href: link,
+                  icon: <Zap className="size-3.5" />,
+                  primary: true,
+                }}
+              />
+              <ActionButton
+                interactive={interactive}
+                action={{
+                  label: t("pages.publicSub.copyKey", { defaultValue: "Copy key" }),
+                  onClick: () => onCopyLink(link),
+                  icon: <Copy className="size-3.5" />,
+                }}
+              />
+              {showQrCodes ? (
+                <QrIconButton
+                  qrUrl={link}
+                  qrLabel={label}
+                  interactive={interactive}
+                  onShowQr={onShowQr}
+                />
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -549,16 +643,22 @@ function SelectedAppDetail(props: DetailProps) {
     tgProxyLinks,
     t,
     stepsView,
+    links,
   } = props;
   const { label, deepLinkTemplate, iconUrl, supportsEncrypted } = getAppMeta(entry);
   const isAmneziaWg = entry.app === "amneziawg";
+  const isAmneziaVpn = entry.app === "amneziavpn";
   const isSingBox = entry.app === "sing-box";
+  const amneziaVpnKeys = listAmneziaVpnImportLinks(links);
+  const firstLink = amneziaVpnKeys[0] ?? "";
 
   const isTelegramMulti = entry.app === "telegram" && tgProxyLinks.length > 1;
+  const isAmneziaVpnMulti = isAmneziaVpn && amneziaVpnKeys.length > 1;
   const urlForTemplate = subscriptionUrlForApp(entry.app, subscriptionUrl, subscriptionJsonUrl);
   const templateVars: TemplateVars = {
     url: urlForTemplate,
     urlJson: subscriptionJsonUrl,
+    firstLink,
   };
   let addHref = isAmneziaWg ? "" : expandTemplate(deepLinkTemplate, templateVars);
   let isEncrypted = false;
@@ -575,12 +675,21 @@ function SelectedAppDetail(props: DetailProps) {
     }
   } else if (isSingBox && !subscriptionJsonUrl) {
     addHref = "";
+  } else if (isAmneziaVpn && !firstLink) {
+    addHref = "";
+  } else if (isAmneziaVpnMulti) {
+    addHref = "";
   }
   const qrUrl = isAmneziaWg
     ? wireguardConf ?? ""
-    : addHref || urlForTemplate || subscriptionUrl;
+    : isAmneziaVpn && !isAmneziaVpnMulti
+      ? firstLink
+      : isAmneziaVpnMulti
+        ? ""
+        : addHref || urlForTemplate || subscriptionUrl;
   const hasDownload = !!entry.downloadUrl?.trim();
-  const effectiveShowDeeplinks = showDeeplinks && !isAmneziaWg;
+  const effectiveShowDeeplinks =
+    showDeeplinks && !isAmneziaWg && !(isAmneziaVpn && amneziaVpnKeys.length > 0);
   const steps =
     entry.steps && entry.steps.length > 0
       ? entry.steps
@@ -588,7 +697,9 @@ function SelectedAppDetail(props: DetailProps) {
         ? defaultTelegramSteps(label, hasDownload, t)
         : isAmneziaWg
           ? defaultAmneziaWgSteps(label, hasDownload, t)
-          : defaultSteps(entry.app, label, hasDownload, t);
+          : isAmneziaVpn
+            ? defaultAmneziaVpnSteps(label, hasDownload, t)
+            : defaultSteps(entry.app, label, hasDownload, t);
 
   const actions = resolveStepActions(steps, {
     hasDownload,
@@ -602,15 +713,20 @@ function SelectedAppDetail(props: DetailProps) {
     addPrimaryLabel:
       entry.app === "telegram"
         ? t("pages.publicSub.mtproto.addProxy", { defaultValue: "Add proxy" })
-        : undefined,
+        : entry.app === "amneziavpn"
+          ? t("pages.publicSub.amneziaVpn.importKey", { defaultValue: "Import key" })
+          : undefined,
     forceShowPrimaryDeeplink:
-      entry.app === "telegram" && !!addHref && !isTelegramMulti,
+      (entry.app === "telegram" && !!addHref && !isTelegramMulti) ||
+      (isAmneziaVpn && !!addHref && !isAmneziaVpnMulti),
     step1CopyUrl:
       entry.app === "telegram" && !isTelegramMulti && tgProxyLinks.length > 0
         ? tgProxyLinks[0]
         : isAmneziaWg && wireguardConf
           ? wireguardConf
-          : undefined,
+          : isAmneziaVpn && !isAmneziaVpnMulti && firstLink
+            ? firstLink
+            : undefined,
   });
 
   const stepExtras =
@@ -627,7 +743,20 @@ function SelectedAppDetail(props: DetailProps) {
             />
           ),
         }
-      : undefined;
+      : isAmneziaVpn && amneziaVpnKeys.length > 0
+        ? {
+            1: (
+              <AmneziaVpnKeyList
+                keys={amneziaVpnKeys}
+                showQrCodes={showQrCodes}
+                interactive={interactive}
+                onCopyLink={onCopyLink}
+                onShowQr={onShowQr}
+                t={t}
+              />
+            ),
+          }
+        : undefined;
 
   const stepsProps = {
     steps,
@@ -905,6 +1034,7 @@ function PlatformContent(props: PlatformContentProps) {
           subscriptionUrl={subscriptionUrl}
           subscriptionJsonUrl={subscriptionJsonUrl}
           wireguardConf={wireguardConf}
+          links={links}
           showDeeplinks={showDeeplinks}
           showQrCodes={showQrCodes}
           interactive={interactive}

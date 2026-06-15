@@ -7,6 +7,7 @@ import (
 	"github.com/konstpic/sharx-code/v2/config"
 	"github.com/konstpic/sharx-code/v2/logger"
 	"github.com/konstpic/sharx-code/v2/node/amneziawg"
+	"github.com/konstpic/sharx-code/v2/xray"
 )
 
 var (
@@ -34,6 +35,7 @@ func nodePayloadsToAmneziaWg(in []AmneziaWGNodePayload) []amneziawg.Payload {
 			Iface:         p.Iface,
 			TunnelAddress: p.TunnelAddress,
 			TunnelSubnet:  p.TunnelSubnet,
+			PeerEmails:    p.PeerEmails,
 		})
 	}
 	return out
@@ -79,6 +81,11 @@ func ApplyLocalAmneziaWgStandalone(xs *XrayService) error {
 		return nil
 	}
 	return getPanelAmneziaWg().Apply(nodePayloadsToAmneziaWg(payloads))
+}
+
+// MergeLocalAmneziaWgTrafficIntoXrayStats merges AmneziaWG awg dump deltas into Xray-shaped stats (single-node panel).
+func MergeLocalAmneziaWgTrafficIntoXrayStats(traffic *[]*xray.Traffic, clientTraffic *[]*xray.ClientTraffic, onlineClients *[]string) {
+	getPanelAmneziaWg().MergeAmneziaWgIntoNodeStats(traffic, clientTraffic, onlineClients)
 }
 
 // TryApplyLocalAmneziaWgStandalone logs failures instead of returning.

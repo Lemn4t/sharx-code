@@ -679,6 +679,9 @@ func (s *Server) stats(c *gin.Context) {
 			if s.telemtManager != nil {
 				s.telemtManager.MergeTelemtIntoNodeStats(&stats.Traffic, &stats.ClientTraffic, &stats.OnlineClients)
 			}
+			if s.amneziawgManager != nil {
+				s.amneziawgManager.MergeAmneziaWgIntoNodeStats(&stats.Traffic, &stats.ClientTraffic, &stats.OnlineClients)
+			}
 			c.JSON(http.StatusOK, stats)
 			return
 		}
@@ -690,6 +693,9 @@ func (s *Server) stats(c *gin.Context) {
 	logger.Debugf("Stats retrieved successfully, sending response")
 	if s.telemtManager != nil {
 		s.telemtManager.MergeTelemtIntoNodeStats(&stats.Traffic, &stats.ClientTraffic, &stats.OnlineClients)
+	}
+	if s.amneziawgManager != nil {
+		s.amneziawgManager.MergeAmneziaWgIntoNodeStats(&stats.Traffic, &stats.ClientTraffic, &stats.OnlineClients)
 	}
 	c.JSON(http.StatusOK, stats)
 	logger.Debugf("Stats response sent")

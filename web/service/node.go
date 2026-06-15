@@ -2092,9 +2092,17 @@ func (s *NodeService) CollectNodeStats() error {
 
 		// Collect online clients
 		for _, email := range result.stats.OnlineClients {
-			onlineClientsMap[email] = true
-			if strings.TrimSpace(email) != "" {
-				lastConnectedNodeByEmail[strings.ToLower(strings.TrimSpace(email))] = result.node.Name
+			email = strings.TrimSpace(email)
+			if email == "" {
+				continue
+			}
+			for _, mapped := range RemapWireGuardStatEmailsList([]string{email}) {
+				k := strings.ToLower(strings.TrimSpace(mapped))
+				if k == "" {
+					continue
+				}
+				onlineClientsMap[k] = true
+				lastConnectedNodeByEmail[k] = result.node.Name
 			}
 		}
 	}
@@ -2203,7 +2211,6 @@ func (s *NodeService) CollectNodeStats() error {
 	}
 
 	// Update online clients in process for GetOnlineClients() to work in multi-node mode
-	// Convert onlineClientsMap to slice
 	onlineClientsList := make([]string, 0, len(onlineClientsMap))
 	for email := range onlineClientsMap {
 		onlineClientsList = append(onlineClientsList, email)

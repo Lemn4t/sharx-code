@@ -186,8 +186,9 @@ type AmneziaWGNodePayload struct {
 	Tag           string `json:"tag"`
 	Conf          string `json:"conf"`
 	Iface         string `json:"iface"`
-	TunnelAddress string `json:"tunnelAddress,omitempty"`
-	TunnelSubnet  string `json:"tunnelSubnet,omitempty"`
+	TunnelAddress string            `json:"tunnelAddress,omitempty"`
+	TunnelSubnet  string            `json:"tunnelSubnet,omitempty"`
+	PeerEmails    map[string]string `json:"peerEmails,omitempty"`
 }
 
 func wireguardSubnetFromServerAddress(addr string) string {
@@ -261,7 +262,27 @@ func amneziaWGTunnelFromSettings(st *AmneziaWGInboundSettings) (tunnelAddress, t
 	return tunnelAddress, tunnelSubnet
 }
 
-func appendAmneziaWGServerPeers(b *strings.Builder, settings map[string]any) {
+func amneziaWGPeerEmailsFromSettings(settings map[string]any) map[string]string {
+	out := make(map[string]string)
+	peers, _ := settings["peers"].([]any)
+	for _, p := range peers {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		pk := strings.TrimSpace(strAny(pm["publicKey"]))
+		email := wireGuardPeerAnyEmail(pm)
+		if pk != "" && email != "" {
+			out[pk] = email
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func appendAmneziaWGServerPeers(b *strings.Builder, settings map[string]any, forSetconf bool) {
 	peers, _ := settings["peers"].([]any)
 	for _, p := range peers {
 		pm, ok := p.(map[string]any)
@@ -289,7 +310,7 @@ func appendAmneziaWGServerPeers(b *strings.Builder, settings map[string]any) {
 		if psk, _ := pm["preSharedKey"].(string); strings.TrimSpace(psk) != "" {
 			b.WriteString("PresharedKey = " + strings.TrimSpace(psk) + "\n")
 		}
-		if ka := anyToInt(pm["keepAlive"]); ka > 0 {
+		if ka := anyToInt(pm["keepAlive"]); ka > 0 && !forSetconf {
 			b.WriteString(fmt.Sprintf("PersistentKeepalive = %d\n", ka))
 		}
 	}
@@ -323,7 +344,7 @@ func BuildAmneziaWGSetconf(inbound *model.Inbound, settings map[string]any, list
 		out.WriteString(fmt.Sprintf("ListenPort = %d\n", listenPort))
 	}
 	AppendAmneziaWGObfuscationToConf(&out, st.Obfuscation)
-	appendAmneziaWGServerPeers(&out, settings)
+	appendAmneziaWGServerPeers(&out, settings, true)
 	return strings.TrimSpace(out.String()) + "\n", tunnelAddress, tunnelSubnet, nil
 }
 
@@ -360,7 +381,7 @@ func BuildAmneziaWGServerConf(inbound *model.Inbound, settings map[string]any, l
 	}
 	AppendAmneziaWGObfuscationToConf(&out, st.Obfuscation)
 	appendAmneziaWGRoutingHooks(&out, tunnelSubnet)
-	appendAmneziaWGServerPeers(&out, settings)
+	appendAmneziaWGServerPeers(&out, settings, false)
 	return strings.TrimSpace(out.String()) + "\n", nil
 }
 
@@ -406,6 +427,7 @@ func BuildAmneziaWgPayloadsStandalone() ([]AmneziaWGNodePayload, error) {
 			Iface:         amneziaWgIfaceForInbound(ib.Id, tag),
 			TunnelAddress: tunnelAddr,
 			TunnelSubnet:  tunnelSubnet,
+			PeerEmails:    amneziaWGPeerEmailsFromSettings(settings),
 		})
 	}
 	return out, nil
@@ -461,6 +483,7 @@ func BuildAmneziaWgPayloadsForNode(node *model.Node, ibs []*model.Inbound) ([]Am
 			Iface:         amneziaWgIfaceForInbound(ib.Id, tag),
 			TunnelAddress: tunnelAddr,
 			TunnelSubnet:  tunnelSubnet,
+			PeerEmails:    amneziaWGPeerEmailsFromSettings(settings),
 		})
 	}
 	return out, nil

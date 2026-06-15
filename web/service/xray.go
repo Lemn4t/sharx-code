@@ -56,6 +56,41 @@ func getPanelOnlineClients() []string {
 	return append([]string(nil), panelOnlineEmails...)
 }
 
+// AppendPanelOnlineClients merges additional emails into the panel online snapshot.
+func AppendPanelOnlineClients(additional []string) {
+	if len(additional) == 0 {
+		return
+	}
+	current := getPanelOnlineClients()
+	seen := make(map[string]struct{}, len(current)+len(additional))
+	merged := make([]string, 0, len(current)+len(additional))
+	for _, e := range current {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		k := strings.ToLower(e)
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		merged = append(merged, e)
+	}
+	for _, e := range additional {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		k := strings.ToLower(e)
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		merged = append(merged, e)
+	}
+	setPanelOnlineClients(merged)
+}
+
 // XrayService provides business logic for Xray process management.
 // It handles starting, stopping, restarting Xray, and managing its configuration.
 // In multi-node mode, it sends configurations to nodes instead of running Xray locally.
