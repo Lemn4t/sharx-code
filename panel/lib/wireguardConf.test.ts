@@ -62,6 +62,14 @@ describe("wireguardConf", () => {
     expect(conf).not.toContain("AmneziaWG (UDP)");
   });
 
+  it("formats collapsed single-line conf for AmneziaWG import", () => {
+    const collapsed =
+      "[Interface] PrivateKey = abc= Address = 10.8.0.2/32 [Peer] PublicKey = xyz= AllowedIPs = 0.0.0.0/0";
+    const conf = wgQuickConfFromPanelText(collapsed);
+    expect(conf).toContain("\nPrivateKey = abc=");
+    expect(conf).toContain("\n[Peer]\n");
+  });
+
   it("detects awg-only subscription with obfuscation lines", () => {
     const awgPanel =
       "AmneziaWG (UDP) — notes\n\n" +

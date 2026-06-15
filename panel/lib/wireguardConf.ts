@@ -4,9 +4,25 @@ export function isWgQuickConfProtocol(protocol: string | null | undefined): bool
   return p === "wireguard" || p === "amneziawg";
 }
 
+const WG_QUICK_KEY =
+  "PrivateKey|Address|DNS|MTU|PublicKey|Endpoint|PresharedKey|PersistentKeepalive|AllowedIPs|Jc|Jmin|Jmax|S1|S2|S3|S4|H1|H2|H3|H4";
+
+/** Normalize collapsed panel/QR text into wg-quick lines (AmneziaWG app is strict). */
+export function formatWgQuickConfForExport(block: string): string {
+  let s = block.trim();
+  if (!s) return s;
+  s = s.replace(/\s+\[(Peer|Interface)\]\s+/g, "\n\n[$1]\n");
+  s = s.replace(
+    new RegExp(`\\s+(${WG_QUICK_KEY})\\s*=`, "g"),
+    "\n$1 =",
+  );
+  return s.trim();
+}
+
 /** wg-quick block for QR / .conf export from panel or subscription text. */
 export function wgQuickConfFromPanelText(text: string): string | null {
-  return extractWireGuardConfBlock(text);
+  const block = extractWireGuardConfBlock(text);
+  return block ? formatWgQuickConfForExport(block) : null;
 }
 
 /**
@@ -18,22 +34,35 @@ export function extractWireGuardConfBlock(text: string): string | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
 
-  const lineStart = /(?:^|\n)\[Interface\]\r?\n/;
-  const match = trimmed.match(lineStart);
-  if (!match || match.index == null) return null;
+  const lineStart = /(?:^|\n)\[Interface\]\s*(?:\r?\n|$)/;
+  let match = trimmed.match(lineStart);
+  if (match && match.index != null) {
+    const start = match.index + (match[0].startsWith("\n") ? 1 : 0);
+    return trimmed.slice(start).trim();
+  }
 
-  const start = match.index + (match[0].startsWith("\n") ? 1 : 0);
-  return trimmed.slice(start).trim();
+  // Collapsed single-line panel text (some QR decoders join lines with spaces).
+  const inline = /(?:^|\s)\[Interface\]\s+(?=PrivateKey|Address|DNS|MTU|Jc|Jmin|S1|H1)/;
+  match = trimmed.match(inline);
+  if (match && match.index != null) {
+    const start = match.index + match[0].indexOf("[Interface]");
+    return trimmed.slice(start).trim();
+  }
+
+  if (trimmed.startsWith("[Interface]")) {
+    return trimmed;
+  }
+  return null;
 }
 
 /** Join split subscription lines and extract a wg-quick block (GetSubs splits WG panel text by `\n`). */
 export function reconstructWireGuardConfFromLinks(links: string[]): string | null {
   for (const link of links) {
-    const conf = extractWireGuardConfBlock(link);
+    const conf = wgQuickConfFromPanelText(link);
     if (conf) return conf;
   }
   if (!links.length) return null;
-  return extractWireGuardConfBlock(links.join("\n"));
+  return wgQuickConfFromPanelText(links.join("\n"));
 }
 
 /** First wg-quick block found in subscription link lines. */
@@ -48,7 +77,7 @@ function isWireGuardPanelMetadataLine(line: string): boolean {
   if (extractWireGuardConfBlock(t)) return false;
   if (t.toLowerCase().startsWith("tg://proxy")) return false;
   if (/^\[Interface\]$/.test(t) || /^\[Peer\]$/.test(t)) return true;
-  if (/^(PrivateKey|Address|DNS|MTU|PublicKey|Endpoint|PresharedKey|PersistentKeepalive|AllowedIPs|Jc|Jmin|Jmax|S1|S2|S3|S4|H1|H2|H3|H4)\s*=/.test(t)) {
+  if (new RegExp(`^(${WG_QUICK_KEY})\\s*=`).test(t)) {
     return true;
   }
   if (

@@ -95,11 +95,16 @@ func (s *SubService) ClientShareLinks(client *model.ClientEntity, inboundIDs []i
 		if link == "" {
 			continue
 		}
+		wgConf := ""
+		if p := model.NormalizeProtocol(inbound.Protocol); p == model.WireGuard || p == model.AmneziaWG {
+			wgConf = wireguardConfBlockFromPanelInfo(link)
+		}
 		out = append(out, model.ClientInboundShareLink{
 			InboundId: id,
 			Remark:    inbound.Remark,
 			Protocol:  string(inbound.Protocol),
 			Link:      link,
+			WgConf:    wgConf,
 		})
 	}
 	return out

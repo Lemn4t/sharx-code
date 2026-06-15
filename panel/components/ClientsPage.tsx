@@ -1268,6 +1268,7 @@ type ShareLinkRow = {
   remark: string;
   protocol: string;
   link: string;
+  wgConf?: string;
 };
 
 type HwidRow = {
@@ -4495,7 +4496,7 @@ export function ClientsPage() {
               // WireGuard / AmneziaWG QR must contain only the wg-quick [Interface]/[Peer] block.
               const usesWgQuickConf = isWgQuickConfProtocol(row.protocol);
               const wgConfText = usesWgQuickConf
-                ? wgQuickConfFromPanelText(row.link)
+                ? (row.wgConf?.trim() || wgQuickConfFromPanelText(row.link))
                 : null;
               const qrText = wgConfText ?? row.link;
               const keyQrTooLong = qrText.length > 2500;
@@ -4558,7 +4559,9 @@ export function ClientsPage() {
                       className="!h-8 !text-xs"
                       onClick={() => {
                         const conf =
-                          wgQuickConfFromPanelText(row.link) ?? row.link;
+                          row.wgConf?.trim() ||
+                          wgQuickConfFromPanelText(row.link) ||
+                          row.link;
                         const blob = new Blob([conf], { type: "text/plain;charset=utf-8" });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement("a");

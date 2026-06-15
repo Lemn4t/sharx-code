@@ -252,6 +252,8 @@ type ClientInboundShareLink struct {
 	Remark    string `json:"remark"`
 	Protocol  string `json:"protocol"`
 	Link      string `json:"link"`
+	// WgConf is wg-quick [Interface]/[Peer] only (WireGuard / AmneziaWG QR and .conf import).
+	WgConf string `json:"wgConf,omitempty"`
 }
 
 // ClientCardView is the unified API model for client list and detail in the panel.

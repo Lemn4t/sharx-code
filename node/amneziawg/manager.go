@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -132,6 +133,70 @@ func teardownWireGuardIface(iface string) {
 			logger.Debugf("amneziawg: ip link delete %s: %v (%s)", iface, err, msg)
 		}
 	}
+}
+
+func tunnelSubnetFromConf(conf string) string {
+	for _, line := range strings.Split(conf, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "Address = ") {
+			continue
+		}
+		addr := strings.TrimSpace(strings.TrimPrefix(line, "Address = "))
+		if addr == "" {
+			break
+		}
+		if !strings.Contains(addr, "/") {
+			return addr + "/24"
+		}
+		_, ipnet, err := net.ParseCIDR(addr)
+		if err != nil || ipnet == nil {
+			return addr
+		}
+		return ipnet.String()
+	}
+	return "10.8.0.0/24"
+}
+
+func iptablesHasRule(table string, args ...string) bool {
+	cmdArgs := []string{"-C"}
+	if table != "" {
+		cmdArgs = append(cmdArgs, "-t", table)
+	}
+	cmdArgs = append(cmdArgs, args...)
+	return exec.Command("iptables", cmdArgs...).Run() == nil
+}
+
+func iptablesEnsureAppend(table string, args ...string) {
+	if iptablesHasRule(table, args...) {
+		return
+	}
+	cmdArgs := []string{"-A"}
+	if table != "" {
+		cmdArgs = append(cmdArgs, "-t", table)
+	}
+	cmdArgs = append(cmdArgs, args...)
+	if out, err := exec.Command("iptables", cmdArgs...).CombinedOutput(); err != nil {
+		logger.Warningf("amneziawg iptables append %v: %v (%s)", args, err, strings.TrimSpace(string(out)))
+	}
+}
+
+// ensureTunnelRouting enables forward + NAT for the sidecar TUN (awg setconf does not run PostUp hooks).
+func ensureTunnelRouting(iface, subnet string) {
+	iface = strings.TrimSpace(iface)
+	subnet = strings.TrimSpace(subnet)
+	if iface == "" {
+		return
+	}
+	if subnet == "" {
+		subnet = "10.8.0.0/24"
+	}
+	if out, err := exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1").CombinedOutput(); err != nil {
+		logger.Warningf("amneziawg sysctl ip_forward: %v (%s)", err, strings.TrimSpace(string(out)))
+	}
+	iptablesEnsureAppend("", "FORWARD", "-i", iface, "-j", "ACCEPT")
+	iptablesEnsureAppend("", "FORWARD", "-o", iface, "-j", "ACCEPT")
+	iptablesEnsureAppend("nat", "POSTROUTING", "-s", subnet, "-j", "MASQUERADE")
+	logger.Infof("amneziawg routing OK: iface=%s subnet=%s", iface, subnet)
 }
 
 func (m *Manager) stopProc(st *procState) {
@@ -255,9 +320,19 @@ func (m *Manager) Apply(payloads []Payload) error {
 
 		// UAPI socket must exist before awg setconf.
 		if awg := findAwgBinary(); awg != "" && conf != "" {
-			if err := exec.Command(awg, "setconf", iface, confPath).Run(); err != nil {
-				logger.Warningf("amneziawg setconf %s: %v", tag, err)
+			out, err := exec.Command(awg, "setconf", iface, confPath).CombinedOutput()
+			if err != nil {
+				logger.Warningf("amneziawg setconf %s iface=%s: %v (%s)", tag, iface, err, strings.TrimSpace(string(out)))
+			} else {
+				logger.Infof("amneziawg setconf OK: tag=%s iface=%s", tag, iface)
+				ensureTunnelRouting(iface, tunnelSubnetFromConf(conf))
+				if showOut, showErr := exec.Command(awg, "show", iface).CombinedOutput(); showErr == nil {
+					lines := strings.Count(strings.TrimSpace(string(showOut)), "\n") + 1
+					logger.Infof("amneziawg show %s: %d line(s)", iface, lines)
+				}
 			}
+		} else if awg == "" {
+			logger.Warningf("amneziawg: awg binary not found — sidecar %s started but setconf skipped", tag)
 		}
 		logger.Infof("AmneziaWG-go started: tag=%s iface=%s pid=%d", tag, iface, cmd.Process.Pid)
 

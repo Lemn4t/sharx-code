@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/konstpic/sharx-code/v2/database"
@@ -187,6 +188,37 @@ type AmneziaWGNodePayload struct {
 	Iface     string `json:"iface"`
 }
 
+func wireguardSubnetFromServerAddress(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return "10.8.0.0/24"
+	}
+	if !strings.Contains(addr, "/") {
+		return addr + "/24"
+	}
+	_, ipnet, err := net.ParseCIDR(addr)
+	if err != nil || ipnet == nil {
+		return addr
+	}
+	return ipnet.String()
+}
+
+// appendAmneziaWGRoutingHooks adds wg-quick PostUp/PostDown so client traffic is forwarded/NATed on the host.
+func appendAmneziaWGRoutingHooks(b *strings.Builder, subnet string) {
+	subnet = strings.TrimSpace(subnet)
+	if subnet == "" {
+		subnet = "10.8.0.0/24"
+	}
+	b.WriteString(fmt.Sprintf(
+		"PostUp = sysctl -w net.ipv4.ip_forward=1; iptables -A FORWARD -i %%i -j ACCEPT; iptables -A FORWARD -o %%i -j ACCEPT; iptables -t nat -A POSTROUTING -s %s -j MASQUERADE\n",
+		subnet,
+	))
+	b.WriteString(fmt.Sprintf(
+		"PostDown = iptables -D FORWARD -i %%i -j ACCEPT; iptables -D FORWARD -o %%i -j ACCEPT; iptables -t nat -D POSTROUTING -s %s -j MASQUERADE\n",
+		subnet,
+	))
+}
+
 func amneziaWgIfaceForInbound(inboundId int, tag string) string {
 	if inboundId > 0 {
 		return fmt.Sprintf("awg%d", inboundId)
@@ -247,6 +279,11 @@ func BuildAmneziaWGServerConf(inbound *model.Inbound, settings map[string]any, l
 		out.WriteString(fmt.Sprintf("MTU = %d\n", st.MTU))
 	}
 	AppendAmneziaWGObfuscationToConf(&out, st.Obfuscation)
+	subnet := "10.8.0.0/24"
+	if len(st.Address) > 0 {
+		subnet = wireguardSubnetFromServerAddress(st.Address[0])
+	}
+	appendAmneziaWGRoutingHooks(&out, subnet)
 	peers, _ := settings["peers"].([]any)
 	for _, p := range peers {
 		pm, ok := p.(map[string]any)
