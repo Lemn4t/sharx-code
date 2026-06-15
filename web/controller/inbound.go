@@ -22,6 +22,7 @@ import (
 type inboundBindBody struct {
 	model.Inbound
 	Wireguard *service.WireGuardInboundRequest `json:"wireguard" form:"-"`
+	Amneziawg *service.AmneziaWGInboundRequest  `json:"amneziawg" form:"-"`
 }
 
 func parseInboundNodeBindingsPayload(jsonData map[string]interface{}) ([]service.InboundNodeBindingInput, bool) {
@@ -64,6 +65,38 @@ func applyWireGuardPanelForm(in *model.Inbound, wg *service.WireGuardInboundRequ
 	return nil
 }
 
+// applyAmneziaWGPanelForm sets Inbound.Settings from `amneziawg` or defaults when the protocol is amneziawg.
+func applyAmneziaWGPanelForm(in *model.Inbound, awg *service.AmneziaWGInboundRequest) error {
+	if model.NormalizeProtocol(in.Protocol) != model.AmneziaWG {
+		return nil
+	}
+	if awg == nil {
+		s := strings.TrimSpace(in.Settings)
+		if s == "" || s == "{}" {
+			built, err := service.BuildAmneziaWGInboundSettingsJSON(nil)
+			if err != nil {
+				return err
+			}
+			in.Settings = built
+		}
+		return nil
+	}
+	built, err := service.BuildAmneziaWGInboundSettingsJSON(awg)
+	if err != nil {
+		return err
+	}
+	in.Settings = built
+	return nil
+}
+
+// applySidecarPanelForms applies wireguard / amneziawg form payloads when present.
+func applySidecarPanelForms(in *model.Inbound, wg *service.WireGuardInboundRequest, awg *service.AmneziaWGInboundRequest) error {
+	if err := applyWireGuardPanelForm(in, wg); err != nil {
+		return err
+	}
+	return applyAmneziaWGPanelForm(in, awg)
+}
+
 // InboundController handles HTTP requests related to Xray inbounds management.
 type InboundController struct {
 	inboundService service.InboundService
@@ -83,8 +116,8 @@ func (a *InboundController) syncWorkerAfterInboundMutation(needRestart bool, inb
 	if !needRestart {
 		return
 	}
-	if model.NormalizeProtocol(inboundProtocol) == model.Telemt {
-		a.xrayService.RestartXrayAsync(false)
+	if model.IsSidecarProtocol(inboundProtocol) {
+		a.xrayService.SyncWorkerSidecarsAsync()
 		return
 	}
 	a.xrayService.SetToNeedRestart()
@@ -116,6 +149,7 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/update/:id", a.updateInbound)
 	g.POST("/previewXray", a.previewInboundXray)
 	g.POST("/previewTelemt", a.previewInboundTelemt)
+	g.POST("/previewAmneziaWg", a.previewInboundAmneziaWg)
 	g.POST("/clientIps/:email", a.getClientIps)
 	g.POST("/clearClientIps/:email", a.clearClientIps)
 	g.POST("/addClient", a.addInboundClient)
@@ -145,7 +179,7 @@ func (a *InboundController) previewInboundXray(c *gin.Context) {
 	user := session.GetLoginUser(c)
 	inbound.UserId = user.Id
 
-	if err := applyWireGuardPanelForm(inbound, bindBody.Wireguard); err != nil {
+	if err := applySidecarPanelForms(inbound, bindBody.Wireguard, bindBody.Amneziawg); err != nil {
 		logger.Errorf("previewInboundXray wireguard: %v", err)
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -191,7 +225,7 @@ func (a *InboundController) previewInboundTelemt(c *gin.Context) {
 	user := session.GetLoginUser(c)
 	inbound.UserId = user.Id
 
-	if err := applyWireGuardPanelForm(inbound, bindBody.Wireguard); err != nil {
+	if err := applySidecarPanelForms(inbound, bindBody.Wireguard, bindBody.Amneziawg); err != nil {
 		logger.Errorf("previewInboundTelemt wireguard: %v", err)
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -228,6 +262,57 @@ func (a *InboundController) previewInboundTelemt(c *gin.Context) {
 		return
 	}
 	jsonObj(c, gin.H{"toml": tomlStr}, nil)
+}
+
+// previewInboundAmneziaWg returns the server .conf that would be applied on the node or panel (standalone).
+func (a *InboundController) previewInboundAmneziaWg(c *gin.Context) {
+	var bindBody inboundBindBody
+	if err := c.ShouldBind(&bindBody); err != nil {
+		logger.Errorf("previewInboundAmneziaWg bind: %v", err)
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	inbound := &bindBody.Inbound
+	user := session.GetLoginUser(c)
+	inbound.UserId = user.Id
+
+	if err := applySidecarPanelForms(inbound, bindBody.Wireguard, bindBody.Amneziawg); err != nil {
+		logger.Errorf("previewInboundAmneziaWg sidecar forms: %v", err)
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+
+	if model.NormalizeProtocol(inbound.Protocol) != model.AmneziaWG {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), fmt.Errorf("not an amneziawg inbound"))
+		return
+	}
+
+	if inbound.Id > 0 {
+		existing, err := a.inboundService.GetInbound(inbound.Id)
+		if err != nil {
+			jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
+			return
+		}
+		if existing.UserId != user.Id {
+			jsonMsg(c, I18nWeb(c, "somethingWentWrong"), fmt.Errorf("access denied"))
+			return
+		}
+		inbound.ClientStats = existing.ClientStats
+	}
+
+	settingService := service.SettingService{}
+	multiMode, _ := settingService.GetMultiNodeMode()
+	if _, err := a.inboundService.AssignInboundTag(inbound, multiMode); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+
+	confStr, err := service.PreviewAmneziaWgConf(inbound)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonObj(c, gin.H{"conf": confStr}, nil)
 }
 
 // generateSelfSignedTls returns a PEM certificate and key for development / Hysteria testing.
@@ -403,7 +488,7 @@ func (a *InboundController) addInbound(c *gin.Context) {
 		return
 	}
 	inbound := &bindBody.Inbound
-	if err = applyWireGuardPanelForm(inbound, bindBody.Wireguard); err != nil {
+	if err = applySidecarPanelForms(inbound, bindBody.Wireguard, bindBody.Amneziawg); err != nil {
 		logger.Errorf("wireguard settings: %v", err)
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -662,7 +747,7 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 	}
 	inbound := &bindBody.Inbound
 	inbound.Id = id
-	if err = applyWireGuardPanelForm(inbound, bindBody.Wireguard); err != nil {
+	if err = applySidecarPanelForms(inbound, bindBody.Wireguard, bindBody.Amneziawg); err != nil {
 		logger.Errorf("wireguard settings: %v", err)
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return

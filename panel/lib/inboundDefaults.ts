@@ -12,7 +12,8 @@ export type InboundFormProtocol =
   | "hysteria"
   | "hysteria2"
   | "wireguard"
-  | "telemt";
+  | "telemt"
+  | "amneziawg";
 
 function randomId(length: number): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -1127,7 +1128,7 @@ export function parseStreamSettingsToForm(
   protocol: InboundFormProtocol,
 ): StreamFormState {
   const base = defaultStreamForm();
-  if (protocol === "wireguard" || protocol === "telemt") {
+  if (protocol === "wireguard" || protocol === "telemt" || protocol === "amneziawg") {
     return base;
   }
   if (protocol === "hysteria" || protocol === "hysteria2") {
@@ -1386,7 +1387,7 @@ export function buildStreamSettingsFromForm(
   state: StreamFormState,
   protocol: InboundFormProtocol,
 ): string {
-  if (protocol === "wireguard" || protocol === "telemt") {
+  if (protocol === "wireguard" || protocol === "telemt" || protocol === "amneziawg") {
     return "{}";
   }
   if (protocol === "hysteria") {

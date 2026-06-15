@@ -472,26 +472,23 @@ func (a *APIController) pullWorkerXrayConfig(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": I18nWeb(c, "api.pullXrayConfig.buildFailed")})
 		return
 	}
-	telemtPayloads, err := service.BuildTelemtPayloadsForNode(node, ibs)
-	// Non-nil empty slice → JSON `[]` (stop all Telemt) instead of `null` (no change).
-	if telemtPayloads == nil {
-		telemtPayloads = []service.TelemtNodePayload{}
-	}
+	telemtPayloads, awgPayloads, err := service.BuildWorkerSidecarPayloadsForNode(node, ibs)
 	if err != nil {
-		logger.Errorf("pull-xray-config telemt for node %d: %v", node.Id, err)
+		logger.Errorf("pull-xray-config sidecars for node %d: %v", node.Id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": I18nWeb(c, "api.pullXrayConfig.buildFailed")})
 		return
 	}
 
 	type pullResp struct {
-		Config          json.RawMessage             `json:"config"`
-		Telemt          []service.TelemtNodePayload `json:"telemt"`
-		NodeId          int                         `json:"nodeId"`
-		CoreProfileHash string                      `json:"coreProfileHash,omitempty"`
-		ConfigSha256    string                      `json:"configSha256,omitempty"`
+		Config          json.RawMessage               `json:"config"`
+		Telemt          []service.TelemtNodePayload   `json:"telemt"`
+		AmneziaWG       []service.AmneziaWGNodePayload `json:"amneziawg"`
+		NodeId          int                           `json:"nodeId"`
+		CoreProfileHash string                        `json:"coreProfileHash,omitempty"`
+		ConfigSha256    string                        `json:"configSha256,omitempty"`
 	}
-	logger.Debugf("pull-xray-config: node %s (%d), %d bytes, telemt=%d", node.Name, node.Id, len(configJSON), len(telemtPayloads))
-	c.JSON(http.StatusOK, pullResp{Config: configJSON, Telemt: telemtPayloads, NodeId: node.Id, CoreProfileHash: coreHash, ConfigSha256: cfgHex})
+	logger.Debugf("pull-xray-config: node %s (%d), %d bytes, telemt=%d amneziawg=%d", node.Name, node.Id, len(configJSON), len(telemtPayloads), len(awgPayloads))
+	c.JSON(http.StatusOK, pullResp{Config: configJSON, Telemt: telemtPayloads, AmneziaWG: awgPayloads, NodeId: node.Id, CoreProfileHash: coreHash, ConfigSha256: cfgHex})
 }
 
 // getAPIDocsMarkdown returns the API documentation markdown file.

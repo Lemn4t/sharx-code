@@ -6,6 +6,7 @@ import type { TFunction } from "i18next";
 import {
   NodeStatusBadge,
   TelemtStateBadge,
+  AmneziaWgStateBadge,
   XrayStateBadge,
 } from "@/components/nodes/nodeBadges";
 import { Button, Switch } from "@/components/ui";
@@ -28,6 +29,7 @@ export type NodeListRow = {
   workerVersion?: string;
   xrayState?: string;
   telemtState?: string;
+  amneziawgState?: string;
   enable?: boolean;
   inbounds?: { id?: number; remark?: string }[];
 };
@@ -47,6 +49,10 @@ export type NodeListViewContext = {
   onRestartTelemt: (r: NodeListRow) => void;
   telemtStoppingId: number | null;
   telemtRestartingId: number | null;
+  onStopAmneziaWg: (r: NodeListRow) => void;
+  onRestartAmneziaWg: (r: NodeListRow) => void;
+  amneziawgStoppingId: number | null;
+  amneziawgRestartingId: number | null;
   onMetrics: (r: NodeListRow) => void;
   onDelete: (r: NodeListRow) => void;
 };
@@ -237,6 +243,57 @@ function NodeTelemtControls({ r, ctx }: { r: NodeListRow; ctx: NodeListViewConte
   );
 }
 
+function NodeAmneziaWgControls({ r, ctx }: { r: NodeListRow; ctx: NodeListViewContext }) {
+  const {
+    t,
+    onStopAmneziaWg,
+    onRestartAmneziaWg,
+    amneziawgStoppingId,
+    amneziawgRestartingId,
+  } = ctx;
+  const running = (r.amneziawgState || "").toLowerCase() === "running";
+  return (
+    <div
+      className="flex items-center gap-1.5"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--fg-subtle)]">
+        AWG
+      </span>
+      <AmneziaWgStateBadge state={r.amneziawgState} t={t} />
+      {r.enable ? (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
+            loading={amneziawgStoppingId === r.id}
+            disabled={!running || amneziawgStoppingId === r.id || amneziawgRestartingId === r.id}
+            title={t("pages.nodes.stopAmneziaWgOnNode")}
+            aria-label={t("pages.nodes.stopAmneziaWgOnNode")}
+            onClick={() => onStopAmneziaWg(r)}
+          >
+            <Power size={16} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="!p-1.5 text-[var(--fg-muted)] hover:text-sky-300 disabled:opacity-40"
+            loading={amneziawgRestartingId === r.id}
+            disabled={amneziawgRestartingId === r.id || amneziawgStoppingId === r.id}
+            title={t("pages.nodes.restartAmneziaWgOnNode")}
+            aria-label={t("pages.nodes.restartAmneziaWgOnNode")}
+            onClick={() => onRestartAmneziaWg(r)}
+          >
+            <RefreshCw size={16} />
+          </Button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function nodeCardClass(disabled: boolean) {
   return `rounded-2xl border border-[var(--border)] bg-[var(--surface)] text-[var(--fg-muted)] transition-colors hover:border-[color-mix(in_oklab,var(--accent)_35%,var(--border))] hover:bg-[color-mix(in_oklab,var(--accent)_4%,transparent)] ${
     disabled ? "opacity-[0.7]" : ""
@@ -327,6 +384,7 @@ export function NodeListRowView({
         <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3 sm:flex-row sm:flex-wrap sm:gap-6">
           <NodeXrayControls r={r} ctx={ctx} />
           <NodeTelemtControls r={r} ctx={ctx} />
+          <NodeAmneziaWgControls r={r} ctx={ctx} />
         </div>
       </div>
     </article>
@@ -399,6 +457,7 @@ export function NodeTileCardView({
         <div className="mt-auto flex flex-col gap-2 border-t border-[var(--border)] pt-3">
           <NodeXrayControls r={r} ctx={ctx} />
           <NodeTelemtControls r={r} ctx={ctx} />
+          <NodeAmneziaWgControls r={r} ctx={ctx} />
         </div>
       </div>
     </article>

@@ -49,6 +49,7 @@ COPY util/ ./util/
 COPY conndrop/ ./conndrop/
 COPY xray/ ./xray/
 COPY telemt/ ./telemt/
+COPY amneziawg/ ./amneziawg/
 COPY sub/ ./sub/
 COPY node/ ./node/
 # Go API and services (.dockerignore omits web/panel/; static UI comes from panelui below).

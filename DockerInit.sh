@@ -101,3 +101,34 @@ if [ -n "$TELEMT_ARCH_DL" ]; then
     rm -f /tmp/telemt.tgz
     echo "DockerInit: telemt -> build/bin/telemt"
 fi
+
+# AmneziaWG-go + awg (userspace sidecar; build from source — no release tarball).
+AMNEZIAWG_GO_REF="${AMNEZIAWG_GO_REF:-master}"
+AMNEZIAWG_TOOLS_REF="${AMNEZIAWG_TOOLS_REF:-master}"
+if command -v git >/dev/null 2>&1 && command -v make >/dev/null 2>&1; then
+    echo "DockerInit: building amneziawg-go (${AMNEZIAWG_GO_REF})..."
+    AWG_GO_TMP="$(mktemp -d)"
+    if git clone --depth 1 --branch "${AMNEZIAWG_GO_REF}" https://github.com/amnezia-vpn/amneziawg-go.git "${AWG_GO_TMP}" \
+        && make -C "${AWG_GO_TMP}" \
+        && cp "${AWG_GO_TMP}/amneziawg-go" build/bin/amneziawg-go \
+        && chmod +x build/bin/amneziawg-go; then
+        echo "DockerInit: amneziawg-go -> build/bin/amneziawg-go"
+    else
+        echo "DockerInit: WARNING — amneziawg-go build failed (AmneziaWG sidecar unavailable)"
+    fi
+    rm -rf "${AWG_GO_TMP}"
+
+    echo "DockerInit: building awg from amneziawg-tools (${AMNEZIAWG_TOOLS_REF})..."
+    AWG_TOOLS_TMP="$(mktemp -d)"
+    if git clone --depth 1 --branch "${AMNEZIAWG_TOOLS_REF}" https://github.com/amnezia-vpn/amneziawg-tools.git "${AWG_TOOLS_TMP}" \
+        && make -C "${AWG_TOOLS_TMP}/src" wg \
+        && cp "${AWG_TOOLS_TMP}/src/wg" build/bin/awg \
+        && chmod +x build/bin/awg; then
+        echo "DockerInit: awg -> build/bin/awg"
+    else
+        echo "DockerInit: WARNING — awg build failed (setconf may be skipped)"
+    fi
+    rm -rf "${AWG_TOOLS_TMP}"
+else
+    echo "DockerInit: skipping AmneziaWG build (git/make not available)"
+fi

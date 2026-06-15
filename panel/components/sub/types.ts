@@ -99,6 +99,20 @@ export function parseLinkTitle(url: string): string {
   }
 }
 
+export const MOCK_WIREGUARD_SUB_LINK =
+  "WireGuard (UDP) — preview sample\n\n" +
+  "Endpoint: 203.0.113.1:51820\n\n" +
+  "Client DNS: 1.1.1.1\n" +
+  "Server public key: YF+7b0X9pQ2nHk8vL3mR6sT1uW4xZ7aB0cD5eF8gH1=\n\n" +
+  "[Interface]\n" +
+  "PrivateKey = cO7nHk8vL3mR6sT1uW4xZ7aB0cD5eF8gH1iJ4kL7mN0=\n" +
+  "Address = 10.8.0.2/32\n" +
+  "DNS = 1.1.1.1\n\n" +
+  "[Peer]\n" +
+  "PublicKey = YF+7b0X9pQ2nHk8vL3mR6sT1uW4xZ7aB0cD5eF8gH1=\n" +
+  "Endpoint = 203.0.113.1:51820\n" +
+  "AllowedIPs = 0.0.0.0/0, ::/0\n";
+
 export const MOCK_SUB_DATA: PublicSubPayload = {
   config: {} as SharxSubpageConfig,
   configUuid: "preview",
@@ -108,6 +122,7 @@ export const MOCK_SUB_DATA: PublicSubPayload = {
     "vless://00000000-0000-0000-0000-000000000000@example.com:443?type=tcp&security=reality&pbk=demo&sid=00#Main%20Fast",
     "vless://00000000-0000-0000-0000-000000000000@example.com:443?type=ws&security=tls&path=/demo#Backup",
     "trojan://demo-password@example.com:443?security=tls#Backup%20TLS",
+    MOCK_WIREGUARD_SUB_LINK,
   ],
   user: {
     shortUuid: "preview",

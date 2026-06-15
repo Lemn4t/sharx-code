@@ -17,7 +17,7 @@ import {
   type SubscriptionApp,
   type SupportedPlatform,
 } from "@/lib/sharxSubpageConfig";
-import { firstWireGuardConfFromLinks, isWireGuardOnlySubscription } from "@/lib/wireguardConf";
+import { firstWireGuardConfFromLinks } from "@/lib/wireguardConf";
 import { resolveMtProtoLinks, tgProxyDisplayLabel } from "../types";
 import { PlatformBrandIcon } from "../PlatformBrandIcon";
 import shell from "../subscription-shell.module.css";
@@ -37,9 +37,9 @@ const PLATFORM_META: Record<SupportedPlatform, { label: string }> = {
 function filterVisibleInstallationApps(
   apps: InstallationAppEntry[],
   mtProtoLinks: string[],
-  wgOnly: boolean,
+  links: string[],
 ): InstallationAppEntry[] {
-  const protocolFiltered = filterAppsForSubscriptionProtocol(apps, wgOnly);
+  const protocolFiltered = filterAppsForSubscriptionProtocol(apps, links);
   return protocolFiltered.filter((e) => {
     if (e.app === "telegram" && mtProtoLinks.length === 0) return false;
     return true;
@@ -49,10 +49,10 @@ function filterVisibleInstallationApps(
 function platformHasVisibleApps(
   group: InstallationPlatform,
   mtProtoLinks: string[],
-  wgOnly: boolean,
+  links: string[],
 ): boolean {
   if (group.enabled === false) return false;
-  return filterVisibleInstallationApps(group.apps, mtProtoLinks, wgOnly).length > 0;
+  return filterVisibleInstallationApps(group.apps, mtProtoLinks, links).length > 0;
 }
 
 function InstallationGuideShell({ children }: { children: ReactNode }) {
@@ -839,7 +839,7 @@ type PlatformContentProps = {
   subscriptionUrl: string;
   subscriptionJsonUrl: string;
   wireguardConf: string | null;
-  wgOnly: boolean;
+  links: string[];
   showDeeplinks: boolean;
   showQrCodes: boolean;
   interactive: boolean;
@@ -859,7 +859,7 @@ function PlatformContent(props: PlatformContentProps) {
     subscriptionUrl,
     subscriptionJsonUrl,
     wireguardConf,
-    wgOnly,
+    links,
     showDeeplinks,
     showQrCodes,
     interactive,
@@ -873,8 +873,8 @@ function PlatformContent(props: PlatformContentProps) {
     stepsView,
   } = props;
   const visibleApps = useMemo(
-    () => filterVisibleInstallationApps(group.apps, mtProtoLinks, wgOnly),
-    [group.apps, mtProtoLinks, wgOnly],
+    () => filterVisibleInstallationApps(group.apps, mtProtoLinks, links),
+    [group.apps, mtProtoLinks, links],
   );
   const [selectedIdx, setSelectedIdx] = useState(0);
   useEffect(() => {
@@ -931,7 +931,7 @@ type GuideProps = {
   subscriptionUrl: string;
   subscriptionJsonUrl: string;
   wireguardConf: string | null;
-  wgOnly: boolean;
+  links: string[];
   showDeeplinks: boolean;
   showQrCodes: boolean;
   interactive: boolean;
@@ -958,7 +958,7 @@ function PlatformTabs(props: GuideProps) {
   } = props;
   void _pv;
   const enabled: InstallationPlatform[] = groups.filter((g: InstallationPlatform) =>
-    platformHasVisibleApps(g, mtProtoLinks, props.wgOnly),
+    platformHasVisibleApps(g, mtProtoLinks, props.links),
   );
   const [activePlatform, setActivePlatform] = useState<SupportedPlatform>(
     () => detectPlatform(enabled),
@@ -1021,7 +1021,7 @@ function PlatformDropdown(props: GuideProps) {
   } = props;
   void _pv;
   const enabled: InstallationPlatform[] = groups.filter((g: InstallationPlatform) =>
-    platformHasVisibleApps(g, mtProtoLinks, props.wgOnly),
+    platformHasVisibleApps(g, mtProtoLinks, props.links),
   );
   const [activePlatform, setActivePlatform] = useState<SupportedPlatform>(
     () => detectPlatform(enabled),
@@ -1082,7 +1082,7 @@ function PlatformPills(props: GuideProps) {
   } = props;
   void _pv;
   const enabled: InstallationPlatform[] = groups.filter((g: InstallationPlatform) =>
-    platformHasVisibleApps(g, mtProtoLinks, props.wgOnly),
+    platformHasVisibleApps(g, mtProtoLinks, props.links),
   );
   const [activePlatform, setActivePlatform] = useState<SupportedPlatform>(
     () => detectPlatform(enabled),
@@ -1145,7 +1145,7 @@ function PlatformAccordion(props: GuideProps) {
   } = props;
   void _pv;
   const enabled: InstallationPlatform[] = groups.filter((g: InstallationPlatform) =>
-    platformHasVisibleApps(g, mtProtoLinks, props.wgOnly),
+    platformHasVisibleApps(g, mtProtoLinks, props.links),
   );
 
   if (enabled.length === 0) return null;
@@ -1158,7 +1158,7 @@ function PlatformAccordion(props: GuideProps) {
           {enabled.map((g: InstallationPlatform, gi: number) => {
             const plat = g.platform as SupportedPlatform;
             const meta = PLATFORM_META[plat];
-            const visibleCount = filterVisibleInstallationApps(g.apps, mtProtoLinks, props.wgOnly).length;
+            const visibleCount = filterVisibleInstallationApps(g.apps, mtProtoLinks, props.links).length;
             return (
               <details
                 key={plat}
@@ -1244,8 +1244,8 @@ export function InstallationGuideBlock({
   const rr = isSharxV2Config(data.config) ? data.config.responseRules : undefined;
   const mtProtoEnabled = rr?.mtProtoEnabled !== false;
   const mtProtoLinks = mtProtoEnabled ? resolveMtProtoLinks(data) : [];
-  const wgOnly = isWireGuardOnlySubscription(data.links ?? []);
-  const wireguardConf = firstWireGuardConfFromLinks(data.links ?? []);
+  const links = data.links ?? [];
+  const wireguardConf = firstWireGuardConfFromLinks(links);
 
   const guideProps: GuideProps = {
     groups,
@@ -1253,7 +1253,7 @@ export function InstallationGuideBlock({
     subscriptionUrl,
     subscriptionJsonUrl: data.subscriptionJsonUrl ?? "",
     wireguardConf,
-    wgOnly,
+    links,
     showDeeplinks,
     showQrCodes,
     interactive,

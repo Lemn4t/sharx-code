@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { appFaviconUrl } from "./subscriptionAppIcons";
+import { hasWireGuardSubscription, isWireGuardOnlySubscription } from "./wireguardConf";
 import {
   SUB_PAGE_COLOR_PRESET_DEFAULT,
   subPageColorPresetSchema,
@@ -428,26 +429,23 @@ export function defaultWireGuardAppEntry(app: SubscriptionApp): InstallationAppE
 
 /**
  * Filter installation / add-to-app entries by subscription protocol mix.
- * WG-only: keep wireguardOnly apps (+ inject amneziawg); hide Xray clients.
- * Mixed / Xray: hide wireguardOnly apps.
+ * WireGuard-only apps (AmneziaWG) when a .conf block is present; Xray apps hidden on WG-only subs.
  */
 export function filterAppsForSubscriptionProtocol<T extends { app: SubscriptionApp; enabled?: boolean }>(
   apps: T[],
-  wgOnly: boolean,
+  links: string[],
 ): T[] {
-  if (!wgOnly) {
-    return apps.filter((e) => {
-      if (e.enabled === false) return false;
-      const cat = APP_CATALOG[e.app];
-      return !cat?.wireguardOnly;
-    });
-  }
+  const wgOnly = isWireGuardOnlySubscription(links);
+  const hasWg = hasWireGuardSubscription(links);
+
   const filtered = apps.filter((e) => {
     if (e.enabled === false) return false;
     const cat = APP_CATALOG[e.app];
-    return cat?.wireguardOnly === true;
+    if (cat?.wireguardOnly) return hasWg;
+    return !wgOnly;
   });
-  if (!filtered.some((e) => e.app === "amneziawg")) {
+
+  if (hasWg && !filtered.some((e) => e.app === "amneziawg")) {
     return [...filtered, defaultWireGuardAppEntry("amneziawg") as unknown as T];
   }
   return filtered;

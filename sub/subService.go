@@ -229,14 +229,7 @@ func (s *SubService) GetSubs(subId string, host string, c *gin.Context) ([]strin
 		if useNewArchitecture {
 			// New architecture: use ClientEntity data directly
 			link := s.getLinkWithClient(prepared, clientEntity)
-			// Split link by newline to handle multiple links (for multiple nodes)
-			linkLines := strings.Split(link, "\n")
-			for _, linkLine := range linkLines {
-				linkLine = strings.TrimSpace(linkLine)
-				if linkLine != "" {
-					result = append(result, linkLine)
-				}
-			}
+			result = appendSubscriptionLinks(result, prepared, link)
 			// Single ClientTraffic row for this sub (same counters for all inbounds)
 			if !newArchTrafficAdded {
 				trafficLimit := int64(clientEntity.TotalGB * 1024 * 1024 * 1024)
@@ -299,14 +292,7 @@ func (s *SubService) GetSubs(subId string, host string, c *gin.Context) ([]strin
 					}
 
 					link := s.getLink(prepared, client.Email)
-					// Split link by newline to handle multiple links (for multiple nodes)
-					linkLines := strings.Split(link, "\n")
-					for _, linkLine := range linkLines {
-						linkLine = strings.TrimSpace(linkLine)
-						if linkLine != "" {
-							result = append(result, linkLine)
-						}
-					}
+					result = appendSubscriptionLinks(result, prepared, link)
 					ct := s.getClientTraffics(prepared.ClientStats, client.Email)
 					if ct.Email == "" {
 						ct = clientTraffic
@@ -390,6 +376,8 @@ func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) 
 			model.Mixed:       {},
 			model.Hysteria:    {},
 			model.Hysteria2:   {},
+			model.WireGuard:   {},
+			model.AmneziaWG:   {},
 		}
 		inboundById := make(map[int]*model.Inbound, len(all))
 		for _, inb := range all {
@@ -504,6 +492,8 @@ func (s *SubService) getLink(inbound *model.Inbound, email string) string {
 		return s.genMixedLink(&in, email)
 	case model.WireGuard:
 		return s.buildWireguardPanelInfo(&in, email)
+	case model.AmneziaWG:
+		return s.buildAmneziaWgPanelInfo(&in, email)
 	case model.Telemt:
 		if email == "" {
 			return ""
@@ -530,6 +520,26 @@ func (s *SubService) getLink(inbound *model.Inbound, email string) string {
 	return ""
 }
 
+// appendSubscriptionLinks adds one subscription entry. WireGuard panel info is kept as a single
+// multi-line string so the sub page can extract the wg-quick [Interface]/[Peer] block; other
+// protocols may return several URLs separated by newlines (multi-node).
+func appendSubscriptionLinks(dst []string, inbound *model.Inbound, link string) []string {
+	link = strings.TrimSpace(link)
+	if link == "" {
+		return dst
+	}
+	if inbound != nil && (model.NormalizeProtocol(inbound.Protocol) == model.WireGuard || model.NormalizeProtocol(inbound.Protocol) == model.AmneziaWG) {
+		return append(dst, link)
+	}
+	for _, linkLine := range strings.Split(link, "\n") {
+		linkLine = strings.TrimSpace(linkLine)
+		if linkLine != "" {
+			dst = append(dst, linkLine)
+		}
+	}
+	return dst
+}
+
 // getLinkWithClient generates a subscription link using ClientEntity data (new architecture)
 func (s *SubService) getLinkWithClient(inbound *model.Inbound, client *model.ClientEntity) string {
 	if inbound == nil {
@@ -537,13 +547,16 @@ func (s *SubService) getLinkWithClient(inbound *model.Inbound, client *model.Cli
 	}
 	in := *inbound
 	in.Protocol = model.Protocol(strings.ToLower(strings.TrimSpace(string(inbound.Protocol))))
-	// WireGuard: optional ClientEntity; email is used to match a peer in inbound JSON
-	if in.Protocol == model.WireGuard {
+	// WireGuard / AmneziaWG: optional ClientEntity; email matches a peer in inbound JSON
+	if in.Protocol == model.WireGuard || in.Protocol == model.AmneziaWG {
 		email := ""
 		if client != nil {
 			email = client.Name
 		}
-		return s.buildWireguardPanelInfo(&in, email)
+		if in.Protocol == model.WireGuard {
+			return s.buildWireguardPanelInfo(&in, email)
+		}
+		return s.buildAmneziaWgPanelInfo(&in, email)
 	}
 	if client == nil {
 		return ""

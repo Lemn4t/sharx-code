@@ -119,3 +119,14 @@ export function TelemtStateBadge({ state, t }: { state: string | undefined; t: T
   const cfg = configs[s as keyof typeof configs] ?? configs.unknown;
   return <TileWithTooltip icon={cfg.icon} tone={cfg.tone} label={cfg.label} />;
 }
+
+export function AmneziaWgStateBadge({ state, t }: { state: string | undefined; t: TFunction }) {
+  const s = (state || "unknown").toLowerCase();
+  const configs = {
+    running: { icon: CircleDot, tone: "success" as const, label: t("pages.nodes.amneziawgStateRunning") },
+    stopped: { icon: Circle, tone: "warning" as const, label: t("pages.nodes.amneziawgStateStopped") },
+    unknown: { icon: HelpCircle, tone: "neutral" as const, label: t("pages.nodes.amneziawgStateUnknown") },
+  } as const;
+  const cfg = configs[s as keyof typeof configs] ?? configs.unknown;
+  return <TileWithTooltip icon={cfg.icon} tone={cfg.tone} label={cfg.label} />;
+}

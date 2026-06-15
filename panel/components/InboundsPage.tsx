@@ -25,6 +25,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getJson, postJson } from "@/lib/api";
 import {
+  buildAmneziaWgInboundApiPayload,
+  defaultAmneziaWgInboundForm,
+  parseAmneziaWgSettingsToForm,
+  randomAmneziaWgObfuscationFields,
+} from "@/lib/amneziawgInbound";
+import {
   buildSettingsJson,
   buildSniffingFromForm,
   buildStreamSettingsFromForm,
@@ -386,6 +392,7 @@ const PROTOCOLS: { value: InboundFormProtocol; label: string }[] = [
   { value: "mixed", label: "Mixed" },
   { value: "hysteria2", label: "Hysteria 2" },
   { value: "wireguard", label: "WireGuard" },
+  { value: "amneziawg", label: "AmneziaWG" },
   { value: "telemt", label: "Telemt (MTProto)" },
 ];
 
@@ -398,6 +405,7 @@ const KNOWN_INBOUND_PROTOCOLS = new Set<InboundFormProtocol>([
   "hysteria",
   "hysteria2",
   "wireguard",
+  "amneziawg",
   "telemt",
 ]);
 
@@ -516,6 +524,7 @@ const PROTOCOL_TONE: Record<string, "accent" | "info" | "warning" | "success" | 
   hysteria2: "accent",
   hysteria: "accent",
   wireguard: "success",
+  amneziawg: "success",
   telemt: "info",
 };
 
@@ -537,6 +546,7 @@ const defaultForm = () => ({
   mixedUser: "proxy",
   mixedPassword: randomPassword(12),
   wireguardForm: defaultWireguardForm(),
+  amneziawgForm: defaultAmneziaWgInboundForm(),
   telemtForm: defaultTelemtForm(),
   totalGb: "0",
   trafficReset: "never",
@@ -722,7 +732,7 @@ export function InboundsPage() {
         ib.remark ?? "",
       );
       const streamForm = parseStreamSettingsToForm(
-        proto === "telemt"
+        proto === "telemt" || proto === "amneziawg"
           ? "{}"
           : (ib.streamSettings || defaultStreamSettingsString()),
         proto,
@@ -753,6 +763,10 @@ export function InboundsPage() {
           proto === "wireguard"
             ? parseWireguardSettingsToForm(ib.settings || "{}")
             : defaultWireguardForm(),
+        amneziawgForm:
+          proto === "amneziawg"
+            ? parseAmneziaWgSettingsToForm(ib.settings || "{}")
+            : defaultAmneziaWgInboundForm(),
         telemtForm:
           proto === "telemt"
             ? parseTelemtSettingsToForm(ib.settings || "{}")
@@ -761,7 +775,7 @@ export function InboundsPage() {
         trafficReset: ib.trafficReset || "never",
         streamForm,
         sniffingForm: parseSniffingToForm(
-          proto === "telemt"
+          proto === "telemt" || proto === "amneziawg"
             ? '{"enabled":false,"destOverride":[],"metadataOnly":false,"routeOnly":false}'
             : (ib.sniffing || defaultSniffingString()),
         ),
@@ -799,6 +813,7 @@ export function InboundsPage() {
   const applyStreamPresetForProtocol = (protocol: InboundFormProtocol) => {
     setForm((f) => {
       const isSwitchingToWg = protocol === "wireguard" && f.protocol !== "wireguard";
+      const isSwitchingToAwg = protocol === "amneziawg" && f.protocol !== "amneziawg";
       const isSwitchingToTelemt = protocol === "telemt" && f.protocol !== "telemt";
       const streamForm =
         protocol === "hysteria" || protocol === "hysteria2"
@@ -809,6 +824,7 @@ export function InboundsPage() {
         protocol,
         streamForm,
         wireguardForm: isSwitchingToWg ? defaultWireguardForm() : f.wireguardForm,
+        amneziawgForm: isSwitchingToAwg ? defaultAmneziaWgInboundForm() : f.amneziawgForm,
         telemtForm: isSwitchingToTelemt ? defaultTelemtForm() : f.telemtForm,
       };
       if (isSwitchingToTelemt) {
@@ -832,6 +848,21 @@ export function InboundsPage() {
         if (!f.listen.trim()) {
           out.listen = "0.0.0.0";
         }
+      }
+      if (isSwitchingToAwg) {
+        out.port = 51820;
+        if (!f.remark.trim()) {
+          out.remark = t("pages.inbounds.amneziawgDefaultRemark", {
+            defaultValue: "AmneziaWG",
+          });
+        }
+        if (!f.listen.trim()) {
+          out.listen = "0.0.0.0";
+        }
+        out.amneziawgForm = {
+          ...defaultAmneziaWgInboundForm(),
+          ...randomAmneziaWgObfuscationFields(),
+        };
       }
       return out;
     });
@@ -1016,11 +1047,12 @@ export function InboundsPage() {
     if (tagValidation) {
       return { ok: false, message: tagValidation };
     }
-    const isTelemt = form.protocol === "telemt";
-    let streamSettingsStr = isTelemt
+    const isSidecar =
+      form.protocol === "telemt" || form.protocol === "amneziawg";
+    let streamSettingsStr = isSidecar
       ? "{}"
       : buildStreamSettingsFromForm(form.streamForm, form.protocol);
-    let sniffingStr = isTelemt
+    let sniffingStr = isSidecar
       ? JSON.stringify({
           enabled: false,
           destOverride: [],
@@ -1034,7 +1066,7 @@ export function InboundsPage() {
     let coreTag: string | undefined;
     let coreFormPatch: Partial<ReturnType<typeof parseFirstClientFromSettings>> = {};
 
-    if (useCoreConfigDraftOnSubmit && !isTelemt && coreConfigDraftRef.current.trim()) {
+    if (useCoreConfigDraftOnSubmit && !isSidecar && coreConfigDraftRef.current.trim()) {
       const coreRt = roundTripInboundCoreConfig(
         coreConfigDraftRef.current,
         form.protocol,
@@ -1054,7 +1086,7 @@ export function InboundsPage() {
       if (coreTagValidation) {
         return { ok: false, message: coreTagValidation };
       }
-    } else if (!isTelemt) {
+    } else if (!isSidecar) {
       const rt = roundTripInboundStreamSettings(streamSettingsStr, form.protocol);
       if (!rt.ok) {
         return { ok: false, message: rt.message };
@@ -1068,7 +1100,7 @@ export function InboundsPage() {
     } catch {
       return { ok: false, message: t("pages.inbounds.invalidStreamJson") };
     }
-    if (!useCoreConfigDraftOnSubmit && !isTelemt) {
+    if (!useCoreConfigDraftOnSubmit && !isSidecar) {
       const sn = roundTripInboundSniffing(sniffingStr);
       if (!sn.ok) {
         return { ok: false, message: sn.message };
@@ -1111,7 +1143,7 @@ export function InboundsPage() {
     let settings: string;
     if (settingsFromCore != null) {
       settings = settingsFromCore;
-    } else if (form.protocol === "wireguard") {
+    } else if (form.protocol === "wireguard" || form.protocol === "amneziawg") {
       settings = "{}";
     } else if (form.protocol === "telemt") {
       settings = buildTelemtSettingsJson(form.telemtForm);
@@ -1165,6 +1197,9 @@ export function InboundsPage() {
     if (form.protocol === "wireguard") {
       body.wireguard = buildWireguardInboundApiPayload(form.wireguardForm);
     }
+    if (form.protocol === "amneziawg") {
+      body.amneziawg = buildAmneziaWgInboundApiPayload(form.amneziawgForm);
+    }
     if (bindingsPayload.length > 0) {
       body.nodeBindings = bindingsPayload;
     }
@@ -1208,6 +1243,7 @@ export function InboundsPage() {
       body.id = editId;
     }
     const isTelemt = form.protocol === "telemt";
+    const isAmneziaWg = form.protocol === "amneziawg";
     const fail = (msg: string) => {
       if (!alive) return;
       setXrayPreviewText(null);
@@ -1217,7 +1253,9 @@ export function InboundsPage() {
     void (
       isTelemt
         ? postJson<{ toml: string }>(panel("api/inbounds/previewTelemt"), body, true)
-        : postJson<unknown>(panel("api/inbounds/previewXray"), body, true)
+        : isAmneziaWg
+          ? postJson<{ conf: string }>(panel("api/inbounds/previewAmneziaWg"), body, true)
+          : postJson<unknown>(panel("api/inbounds/previewXray"), body, true)
     ).then(
       (r) => {
         if (!alive) return;
@@ -1226,6 +1264,14 @@ export function InboundsPage() {
             const tom = (r.obj as { toml?: unknown }).toml;
             if (typeof tom === "string") {
               setXrayPreviewText(tom);
+              setXrayPreviewError(null);
+            } else {
+              fail(t("fail", { defaultValue: "Error" }));
+            }
+          } else if (isAmneziaWg) {
+            const conf = (r.obj as { conf?: unknown }).conf;
+            if (typeof conf === "string") {
+              setXrayPreviewText(conf);
               setXrayPreviewError(null);
             } else {
               fail(t("fail", { defaultValue: "Error" }));
@@ -1392,7 +1438,7 @@ export function InboundsPage() {
     return INBOUND_STEP_ORDER.filter((id) => {
       if (id === "nodes" && multiNodeMode !== true) return false;
       if (id === "auth" && !hasAuth) return false;
-      if (id === "sniffing" && form.protocol === "telemt") return false;
+      if (id === "sniffing" && (form.protocol === "telemt" || form.protocol === "amneziawg")) return false;
       return true;
     });
   }, [multiNodeMode, form.protocol]);
@@ -2109,9 +2155,13 @@ export function InboundsPage() {
                         ? t("pages.inbounds.viewTelemtTomlPreview", {
                             defaultValue: "Telemt preview",
                           })
-                        : t("pages.inbounds.viewXrayCorePreview", {
-                            defaultValue: "Xray config",
-                          })}
+                        : form.protocol === "amneziawg"
+                          ? t("pages.inbounds.viewAmneziaWgConfPreview", {
+                              defaultValue: "AWG preview",
+                            })
+                          : t("pages.inbounds.viewXrayCorePreview", {
+                              defaultValue: "Xray config",
+                            })}
                     </button>
                   </div>
                 ) : null}
@@ -2126,13 +2176,18 @@ export function InboundsPage() {
             </div>
 
             {inboundModalView === "preview" ? (
-              form.protocol === "telemt" ? (
+              form.protocol === "telemt" || form.protocol === "amneziawg" ? (
                 <div className="space-y-2">
                   <p className="text-xs text-[var(--fg-muted)]">
-                    {t("pages.inbounds.telemtTomlPreviewHint", {
-                      defaultValue:
-                        "Generated Telemt config.toml (same as deployed to the node or local data/telemt on standalone). [access.users] is empty until you save the inbound and assign clients; after that it reflects the database.",
-                    })}
+                    {form.protocol === "telemt"
+                      ? t("pages.inbounds.telemtTomlPreviewHint", {
+                          defaultValue:
+                            "Generated Telemt config.toml (same as deployed to the node or local data/telemt on standalone). [access.users] is empty until you save the inbound and assign clients; after that it reflects the database.",
+                        })
+                      : t("pages.inbounds.amneziawgConfPreviewHint", {
+                          defaultValue:
+                            "Generated server .conf for amneziawg-go (same as deployed to the node or local data/amneziawg on standalone). Peers appear after you assign clients.",
+                        })}
                   </p>
                   <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
                     {!inboundApiPayloadPreview.ok ? (
@@ -5733,6 +5788,168 @@ export function InboundsPage() {
                     })}
                   </Button>
                 </div>
+              </div>
+            ) : null}
+            {form.protocol === "amneziawg" ? (
+              <div className="space-y-3">
+                <p className="text-xs text-[var(--fg-subtle)]">
+                  {t("pages.inbounds.amneziawgSettingsHint", {
+                    defaultValue:
+                      "AmneziaWG sidecar (amneziawg-go): UDP tunnel with obfuscation (Jc/H/S). Peers are created when you assign clients. Not part of Xray JSON.",
+                  })}
+                </p>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="in-awg-mtu">
+                    {t("pages.inbounds.wireguardMtu", { defaultValue: "MTU" })}
+                  </label>
+                  <Input
+                    id="in-awg-mtu"
+                    type="number"
+                    className="font-mono text-xs"
+                    min={1280}
+                    max={9000}
+                    value={form.amneziawgForm.mtu}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      setForm((f) => ({
+                        ...f,
+                        amneziawgForm: {
+                          ...f.amneziawgForm,
+                          mtu: Number.isFinite(n) && n > 0 ? n : 1420,
+                        },
+                      }));
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="in-awg-sk">
+                    {t("pages.inbounds.wireguardSecretKey", {
+                      defaultValue: "Secret key (server private, base64)",
+                    })}
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="in-awg-sk"
+                      className="flex-1 font-mono text-xs"
+                      value={form.amneziawgForm.secretKey}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          amneziawgForm: { ...f.amneziawgForm, secretKey: e.target.value },
+                        }))
+                      }
+                      spellCheck={false}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="shrink-0 text-xs"
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          amneziawgForm: {
+                            ...f.amneziawgForm,
+                            secretKey: newWireGuardSecretKeyBase64(),
+                          },
+                        }))
+                      }
+                    >
+                      {t("pages.inbounds.wireguardRegenKey", { defaultValue: "Regenerate key" })}
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="in-awg-addr">
+                    {t("pages.inbounds.wireguardAddress", {
+                      defaultValue: "Tunnel address (CIDR, one per line)",
+                    })}
+                  </label>
+                  <TextArea
+                    id="in-awg-addr"
+                    className="min-h-[68px] font-mono text-xs"
+                    value={form.amneziawgForm.address}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        amneziawgForm: { ...f.amneziawgForm, address: e.target.value },
+                      }))
+                    }
+                    spellCheck={false}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]" htmlFor="in-awg-dns">
+                    {t("pages.inbounds.wireguardClientDns", { defaultValue: "Client DNS (for user .conf)" })}
+                  </label>
+                  <TextArea
+                    id="in-awg-dns"
+                    className="min-h-[56px] font-mono text-xs"
+                    value={form.amneziawgForm.clientDns}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        amneziawgForm: { ...f.amneziawgForm, clientDns: e.target.value },
+                      }))
+                    }
+                    spellCheck={false}
+                  />
+                </div>
+                <div className="rounded-xl border border-[var(--border)] p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-[var(--fg-muted)]">
+                      {t("pages.inbounds.amneziawgObfuscation", { defaultValue: "Obfuscation (Jc / H / S)" })}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="text-xs shrink-0"
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          amneziawgForm: { ...f.amneziawgForm, ...randomAmneziaWgObfuscationFields() },
+                        }))
+                      }
+                    >
+                      {t("pages.inbounds.amneziawgRegenObfuscation", { defaultValue: "Randomize" })}
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {(["jc", "jmin", "jmax", "s1", "s2", "h1", "h2", "h3", "h4"] as const).map((key) => (
+                      <div key={key}>
+                        <label className="mb-1 block text-[10px] uppercase tracking-wide text-[var(--fg-subtle)]">
+                          {key}
+                        </label>
+                        <Input
+                          className="font-mono text-xs"
+                          value={form.amneziawgForm[key]}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              amneziawgForm: { ...f.amneziawgForm, [key]: e.target.value },
+                            }))
+                          }
+                          spellCheck={false}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="text-xs"
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      amneziawgForm: {
+                        ...defaultAmneziaWgInboundForm(),
+                        ...randomAmneziaWgObfuscationFields(),
+                      },
+                    }))
+                  }
+                >
+                  {t("pages.inbounds.amneziawgResetDefaults", { defaultValue: "Reset to defaults" })}
+                </Button>
               </div>
             ) : null}
 

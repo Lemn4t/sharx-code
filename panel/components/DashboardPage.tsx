@@ -176,15 +176,15 @@ function CountNumber({ value }: { value: number }) {
 function xrayTagClass(color: string) {
   switch (color) {
     case "green":
-      return "border-emerald-500/35 bg-emerald-500/10 text-emerald-200";
+      return "status-pill status-pill--green";
     case "orange":
-      return "border-amber-500/35 bg-amber-500/10 text-amber-100";
+      return "status-pill status-pill--amber";
     case "red":
-      return "border-red-500/35 bg-red-500/10 text-red-200";
+      return "status-pill status-pill--rose";
     case "info":
-      return "border-sky-500/35 bg-sky-500/10 text-sky-100";
+      return "status-pill status-pill--blue";
     default:
-      return "border-[var(--border)] bg-[var(--surface)] text-[var(--fg-muted)]";
+      return "status-pill status-pill--neutral";
   }
 }
 
@@ -827,18 +827,18 @@ export function DashboardPage() {
   const levelBadgeClass = useCallback((lvl: string) => {
     const k = String(lvl || "").toLowerCase();
     if (k.startsWith("err") || k === "error") {
-      return "border-red-500/40 bg-red-500/10 text-red-300";
+      return "status-pill status-pill--rose";
     }
     if (k.startsWith("warn") || k === "warning") {
-      return "border-amber-500/40 bg-amber-500/10 text-amber-200";
+      return "status-pill status-pill--amber";
     }
     if (k === "info" || k === "notice") {
-      return "border-sky-500/40 bg-sky-500/10 text-sky-200";
+      return "status-pill status-pill--blue";
     }
     if (k === "debug") {
-      return "border-violet-500/35 bg-violet-500/10 text-violet-200";
+      return "status-pill status-pill--neutral";
     }
-    return "border-[var(--border)] bg-[var(--surface)] text-[var(--fg-muted)]";
+    return "status-pill status-pill--neutral";
   }, []);
 
   const filteredLogs = useMemo(() => {

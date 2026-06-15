@@ -455,6 +455,7 @@ func (s *ClientService) AddClient(userId int, client *model.ClientEntity) (bool,
 
 	// Sync assigned inbounds: persist settings in DB, add user via API (no full inbound replace / restart).
 	needRestart := false
+	needSidecarSync := false
 	if len(client.InboundIds) > 0 {
 		inboundService := InboundService{}
 		settingService := SettingService{}
@@ -490,8 +491,8 @@ func (s *ClientService) AddClient(userId int, client *model.ClientEntity) (bool,
 				continue
 			}
 
-			if model.NormalizeProtocol(inbound.Protocol) == model.Telemt {
-				needRestart = true
+			if model.IsSidecarProtocol(inbound.Protocol) {
+				needSidecarSync = true
 				continue
 			}
 			if !model.IsXrayInboundProtocol(inbound.Protocol) {
@@ -551,6 +552,10 @@ func (s *ClientService) AddClient(userId int, client *model.ClientEntity) (bool,
 	tgbotService := Tgbot{}
 	if tgbotService.IsRunning() {
 		tgbotService.NotifyClientCreated(client)
+	}
+
+	if needSidecarSync {
+		(&XrayService{}).SyncWorkerSidecarsAsync()
 	}
 
 	return needRestart, nil
@@ -817,7 +822,8 @@ func (s *ClientService) UpdateClient(userId int, client *model.ClientEntity) (bo
 	// We do this AFTER committing the client transaction to avoid nested transactions and database locks
 	// Run asynchronously to avoid blocking the HTTP response - changes will be applied immediately in background
 	go func() {
-		needRestart := false
+		needXrayRestart := false
+		needSidecarSync := false
 		inboundService := InboundService{}
 		settingService := SettingService{}
 		multiMode, _ := settingService.GetMultiNodeMode()
@@ -977,18 +983,20 @@ func (s *ClientService) UpdateClient(userId int, client *model.ClientEntity) (bo
 				logger.Warningf("Failed to update inbound %d settings: %v", inboundId, err)
 				// Continue with other inbounds
 			} else if inboundNeedRestart {
-				needRestart = true
+				if model.IsSidecarProtocol(inbound.Protocol) {
+					needSidecarSync = true
+				} else {
+					needXrayRestart = true
+				}
 			}
 		}
 
-		// Restart only if UpdateInbound could not apply changes via API (see InboundService.UpdateInbound).
-		// Single-node: local sync uses gRPC DelInbound+AddInbound for the inbound, same session as nodes' add-user API.
-		// Restart Xray asynchronously in background to apply changes
-		// This ensures config is fully synchronized without blocking the response
-		// Fastest approach: instant config update + async restart (user gets instant response, restart happens in background)
-		if needRestart {
-			logger.Debugf("UpdateClient: scheduling async restart to apply changes")
-			xrayService := XrayService{}
+		if needSidecarSync {
+			logger.Debugf("UpdateClient: syncing sidecars only (Xray untouched)")
+			xrayService.SyncWorkerSidecarsAsync()
+		}
+		if needXrayRestart {
+			logger.Debugf("UpdateClient: scheduling async Xray restart to apply changes")
 			xrayService.RestartXrayAsync(false)
 		}
 	}()
@@ -1047,7 +1055,8 @@ func (s *ClientService) DeleteClient(userId int, id int) (bool, error) {
 		affectedInboundIds[mapping.InboundId] = true
 	}
 
-	needRestart := false
+	needXrayRestart := false
+	needSidecarSync := false
 
 	tx := db.Begin()
 	// Track if transaction was committed to avoid double rollback
@@ -1150,18 +1159,22 @@ func (s *ClientService) DeleteClient(userId int, id int) (bool, error) {
 			logger.Warningf("Failed to update inbound %d settings: %v", inboundId, err)
 			// Continue with other inbounds
 		} else if inboundNeedRestart {
-			needRestart = true
+			if model.IsSidecarProtocol(inbound.Protocol) {
+				needSidecarSync = true
+			} else {
+				needXrayRestart = true
+			}
 		}
 	}
 
-	// Single-node: restart only if inbound update required a full reload (API unavailable or structural inbound change).
-	// Multi-mode: nodes are updated via their APIs when inboundNeedRestart is set.
-
-	// Restart Xray asynchronously in background to apply changes
-	// This ensures config is fully synchronized without blocking the response
-	// Fastest approach: instant config update + async restart (user gets instant response, restart happens in background)
-	if needRestart {
-		logger.Debugf("DeleteClient: scheduling async restart to apply changes")
+	if needSidecarSync {
+		logger.Debugf("DeleteClient: syncing sidecars only (Xray untouched)")
+		go func() {
+			xrayService.SyncWorkerSidecarsAsync()
+		}()
+	}
+	if needXrayRestart {
+		logger.Debugf("DeleteClient: scheduling async Xray restart to apply changes")
 		go func() {
 			if err := xrayService.RestartXray(false); err != nil {
 				logger.Warningf("DeleteClient: failed to restart Xray: %v", err)

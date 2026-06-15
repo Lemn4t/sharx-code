@@ -52,9 +52,11 @@ func (a *NodeController) initRouter(g *gin.RouterGroup) {
 	g.POST("/check-connection", a.checkNodeConnection) // Check node connection without API key
 	g.POST("/resetTraffic/:id", a.resetNodeTraffic)    // Reset node traffic
 	g.POST("/stopTelemt/:id", a.stopTelemtOnNode)
+	g.POST("/stopAmneziaWg/:id", a.stopAmneziaWgOnNode)
 	g.POST("/stopXray/:id", a.stopXrayOnNode)
 	g.POST("/restartXray/:id", a.restartXrayOnNode)
 	g.POST("/restartTelemt/:id", a.restartTelemtOnNode)
+	g.POST("/restartAmneziaWg/:id", a.restartAmneziaWgOnNode)
 	g.GET("/secret", a.getPairingSecret) // Panel-wide SECRET_KEY for node docker-compose
 	g.GET("/geography", a.getNodesGeography)
 	g.GET("/client-traffic-per-node", a.getClientTrafficPerNode)
@@ -301,6 +303,9 @@ func (a *NodeController) updateNode(c *gin.Context) {
 				if terr := a.nodeService.StopTelemtOnNode(n); terr != nil {
 					logger.Warningf("[Node: %s] stop Telemt on worker while disabling node: %v", n.Name, terr)
 				}
+				if aerr := a.nodeService.StopAmneziaWgOnNode(n); aerr != nil {
+					logger.Warningf("[Node: %s] stop AmneziaWG on worker while disabling node: %v", n.Name, aerr)
+				}
 				if err := a.nodeService.StopXrayOnNode(n); err != nil {
 					logger.Warningf("[Node: %s] stop Xray on worker: %v", n.Name, err)
 					_ = a.nodeService.SetNodeXrayState(n.Id, model.NodeXrayError)
@@ -319,6 +324,7 @@ func (a *NodeController) updateNode(c *gin.Context) {
 				if err == nil && n != nil && n.Enable {
 					_ = a.nodeService.RefreshNodeXrayStateFromWorker(n)
 					_ = a.nodeService.RefreshNodeTelemtStateFromWorker(n)
+					_ = a.nodeService.RefreshNodeAmneziaWgStateFromWorker(n)
 				}
 				a.broadcastNodesUpdate()
 			}(id)
@@ -438,6 +444,58 @@ func (a *NodeController) restartTelemtOnNode(c *gin.Context) {
 	}
 	a.broadcastNodesUpdate()
 	jsonMsg(c, "Telemt restarted on node", nil)
+}
+
+// stopAmneziaWgOnNode stops AmneziaWG sidecars on a worker (Xray keeps running).
+func (a *NodeController) stopAmneziaWgOnNode(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, "Invalid node ID", err)
+		return
+	}
+	n, err := a.nodeService.GetNode(id)
+	if err != nil || n == nil {
+		jsonMsg(c, "Node not found", err)
+		return
+	}
+	if !n.Enable {
+		jsonMsg(c, "Node is disabled", nil)
+		return
+	}
+	if err := a.nodeService.StopAmneziaWgOnNode(n); err != nil {
+		jsonMsg(c, "Failed to stop AmneziaWG on node", err)
+		return
+	}
+	a.broadcastNodesUpdate()
+	jsonMsg(c, "AmneziaWG stopped on node", nil)
+}
+
+// restartAmneziaWgOnNode restarts AmneziaWG sidecars on a worker.
+func (a *NodeController) restartAmneziaWgOnNode(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, "Invalid node ID", err)
+		return
+	}
+	n, err := a.nodeService.GetNode(id)
+	if err != nil || n == nil {
+		jsonMsg(c, "Node not found", err)
+		return
+	}
+	if !n.Enable {
+		jsonMsg(c, "Node is disabled", nil)
+		return
+	}
+	if err := a.nodeService.RestartAmneziaWgOnNode(n); err != nil {
+		if isNodeReregistrationError(err) {
+			jsonMsg(c, "Node was recreated and needs to be re-registered. Please delete this node and add it again, or contact administrator to re-register it.", err)
+		} else {
+			jsonMsg(c, "Failed to restart AmneziaWG on node", err)
+		}
+		return
+	}
+	a.broadcastNodesUpdate()
+	jsonMsg(c, "AmneziaWG restarted on node", nil)
 }
 
 // deleteNode deletes a node by its ID.

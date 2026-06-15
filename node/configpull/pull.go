@@ -12,6 +12,7 @@ import (
 
 	"github.com/konstpic/sharx-code/v2/logger"
 	nodeConfig "github.com/konstpic/sharx-code/v2/node/config"
+	"github.com/konstpic/sharx-code/v2/node/amneziawg"
 	"github.com/konstpic/sharx-code/v2/node/telemt"
 	"github.com/konstpic/sharx-code/v2/node/xray"
 	"github.com/konstpic/sharx-code/v2/util/pairing_outbound"
@@ -34,7 +35,7 @@ type pullOutcome struct {
 
 // TryPullAndApply requests the latest Xray JSON (and optional Telemt payloads) from the panel and applies if Xray is not running.
 // Retries with backoff on transient errors; clears stale nodeId and retries by address after HTTP 401.
-func TryPullAndApply(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.Manager, telemtMgr *telemt.Manager) {
+func TryPullAndApply(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.Manager, telemtMgr *telemt.Manager, awgMgr *amneziawg.Manager) {
 	for attempt, delay := range startupPullDelays {
 		if attempt > 0 {
 			time.Sleep(delay)
@@ -42,7 +43,7 @@ func TryPullAndApply(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.M
 		if mgr != nil && mgr.IsRunning() {
 			return
 		}
-		out := pullAndApplyOnce(panelURL, nodeAddress, hmacKey, false, mgr, telemtMgr)
+		out := pullAndApplyOnce(panelURL, nodeAddress, hmacKey, false, mgr, telemtMgr, awgMgr)
 		if out.applied {
 			return
 		}
@@ -52,7 +53,7 @@ func TryPullAndApply(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.M
 			} else {
 				logger.Warningf("Config pull: cleared stale nodeId, retrying by nodeAddress only")
 			}
-			out = pullAndApplyOnce(panelURL, nodeAddress, hmacKey, true, mgr, telemtMgr)
+			out = pullAndApplyOnce(panelURL, nodeAddress, hmacKey, true, mgr, telemtMgr, awgMgr)
 			if out.applied {
 				return
 			}
@@ -68,7 +69,7 @@ func TryPullAndApply(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.M
 }
 
 // StartBackgroundPull retries pull-xray-config until Xray is running or the worker stops trying.
-func StartBackgroundPull(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.Manager, telemtMgr *telemt.Manager) {
+func StartBackgroundPull(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xray.Manager, telemtMgr *telemt.Manager, awgMgr *amneziawg.Manager) {
 	panelURL = strings.TrimSpace(panelURL)
 	nodeAddress = strings.TrimSpace(nodeAddress)
 	if panelURL == "" || nodeAddress == "" || mgr == nil {
@@ -87,7 +88,7 @@ func StartBackgroundPull(panelURL, nodeAddress string, hmacKey [32]byte, mgr *xr
 				return
 			}
 			logger.Infof("Config pull: background retry (%d/%d), xray not running", i+1, maxTicks)
-			TryPullAndApply(panelURL, nodeAddress, hmacKey, mgr, telemtMgr)
+			TryPullAndApply(panelURL, nodeAddress, hmacKey, mgr, telemtMgr, awgMgr)
 		}
 	}()
 }
@@ -98,6 +99,7 @@ func pullAndApplyOnce(
 	omitNodeID bool,
 	mgr *xray.Manager,
 	telemtMgr *telemt.Manager,
+	awgMgr *amneziawg.Manager,
 ) pullOutcome {
 	panelURL = strings.TrimSpace(panelURL)
 	nodeAddress = strings.TrimSpace(nodeAddress)
@@ -156,9 +158,10 @@ func pullAndApplyOnce(
 	}
 
 	var envelope struct {
-		Config json.RawMessage `json:"config"`
-		Telemt json.RawMessage `json:"telemt"`
-		NodeId int             `json:"nodeId,omitempty"`
+		Config    json.RawMessage `json:"config"`
+		Telemt    json.RawMessage `json:"telemt"`
+		AmneziaWG json.RawMessage `json:"amneziawg"`
+		NodeId    int             `json:"nodeId,omitempty"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		logger.Warningf("Config pull: invalid JSON: %v", err)
@@ -183,7 +186,24 @@ func pullAndApplyOnce(
 	logger.Infof("Config pull: applied Xray configuration from panel (%d bytes)", len(envelope.Config))
 
 	applyTelemtFromEnvelope(telemtMgr, envelope.Telemt)
+	applyAmneziaWgFromEnvelope(awgMgr, envelope.AmneziaWG)
 	return pullOutcome{applied: true, statusCode: resp.StatusCode}
+}
+
+func applyAmneziaWgFromEnvelope(awgMgr *amneziawg.Manager, raw json.RawMessage) {
+	if awgMgr == nil || len(raw) == 0 || string(raw) == "null" {
+		return
+	}
+	var payloads []amneziawg.Payload
+	if err := json.Unmarshal(raw, &payloads); err != nil {
+		logger.Warningf("Config pull: amneziawg parse: %v", err)
+		return
+	}
+	if err := awgMgr.Apply(payloads); err != nil {
+		logger.Warningf("Config pull: amneziawg apply: %v", err)
+		return
+	}
+	logger.Infof("Config pull: applied AmneziaWG payloads (%d)", len(payloads))
 }
 
 func applyTelemtFromEnvelope(telemtMgr *telemt.Manager, raw json.RawMessage) {

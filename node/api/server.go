@@ -30,6 +30,7 @@ import (
 	nodeConfig "github.com/konstpic/sharx-code/v2/node/config"
 	"github.com/konstpic/sharx-code/v2/node/geopush"
 	nodeLogs "github.com/konstpic/sharx-code/v2/node/logs"
+	"github.com/konstpic/sharx-code/v2/node/amneziawg"
 	"github.com/konstpic/sharx-code/v2/node/telemt"
 	"github.com/konstpic/sharx-code/v2/node/xray"
 	telemtinstall "github.com/konstpic/sharx-code/v2/telemt/install"
@@ -49,10 +50,11 @@ func try(fn func()) {
 
 // Server provides REST API for managing the node.
 type Server struct {
-	port          int
-	xrayManager   *xray.Manager
-	telemtManager *telemt.Manager
-	httpServer    *http.Server
+	port              int
+	xrayManager       *xray.Manager
+	telemtManager     *telemt.Manager
+	amneziawgManager  *amneziawg.Manager
+	httpServer        *http.Server
 	certFile           string
 	keyFile            string
 	// clientCAFile, if set with cert/key, enables mTLS (panel must present a cert signed by this CA).
@@ -92,11 +94,12 @@ func logXrayNotReadyThrottled(endpoint string) {
 }
 
 // NewServer creates a new API server instance. Call SetPairing before Start (pairing-only).
-func NewServer(port int, xrayManager *xray.Manager, telemtManager *telemt.Manager) *Server {
+func NewServer(port int, xrayManager *xray.Manager, telemtManager *telemt.Manager, amneziawgManager *amneziawg.Manager) *Server {
 	return &Server{
-		port:          port,
-		xrayManager:   xrayManager,
-		telemtManager: telemtManager,
+		port:             port,
+		xrayManager:      xrayManager,
+		telemtManager:    telemtManager,
+		amneziawgManager: amneziawgManager,
 	}
 }
 
@@ -146,9 +149,12 @@ func (s *Server) Start() error {
 	api := router.Group("/api/v1")
 	{
 		api.POST("/apply-config", s.applyConfig)
+		api.POST("/apply-sidecars", s.applySidecars)
 		api.POST("/stop-xray", s.stopXray)
 		api.POST("/stop-telemt", s.stopTelemt)
 		api.POST("/restart-telemt", s.restartTelemt)
+		api.POST("/stop-amneziawg", s.stopAmneziaWg)
+		api.POST("/restart-amneziawg", s.restartAmneziaWg)
 		api.POST("/reload", s.reload)
 		api.POST("/force-reload", s.forceReload)
 		api.POST("/install-xray/:version", s.installXray)
@@ -298,19 +304,25 @@ func verifyBearerJWT(authHeader string, pub *rsa.PublicKey) error {
 func (s *Server) health(c *gin.Context) {
 	st := s.xrayManager.GetStatus()
 	tCount := 0
+	aCount := 0
 	if s.telemtManager != nil {
 		tCount = s.telemtManager.RunningCount()
 	}
+	if s.amneziawgManager != nil {
+		aCount = s.amneziawgManager.RunningCount()
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"status":        "ok",
-		"service":       "sharx-node",
-		"sharxVersion":  config.GetVersion(),
-		"xrayRunning":   st["running"],
-		"xrayVersion":   st["version"],
-		"xrayUptime":    st["uptime"],
-		"telemtRunning": tCount > 0,
-		"telemtCount":   tCount,
-		"telemtVersion": telemtinstall.ReadVersion(""),
+		"status":           "ok",
+		"service":          "sharx-node",
+		"sharxVersion":     config.GetVersion(),
+		"xrayRunning":      st["running"],
+		"xrayVersion":      st["version"],
+		"xrayUptime":       st["uptime"],
+		"telemtRunning":    tCount > 0,
+		"telemtCount":      tCount,
+		"telemtVersion":    telemtinstall.ReadVersion(""),
+		"amneziawgRunning": aCount > 0,
+		"amneziawgCount":   aCount,
 	})
 }
 
@@ -328,6 +340,7 @@ func (s *Server) applyConfig(c *gin.Context) {
 	logger.Infof("Request body read, size: %d bytes", len(body))
 
 	var telemtRaw json.RawMessage
+	var amneziawgRaw json.RawMessage
 	reqCoreProfileHash := ""
 	reqExpectedSHA := ""
 
@@ -336,16 +349,18 @@ func (s *Server) applyConfig(c *gin.Context) {
 		PanelURL             string          `json:"panelUrl,omitempty"`
 		NodeId               int             `json:"nodeId,omitempty"`
 		Telemt               json.RawMessage `json:"telemt"`
+		AmneziaWG            json.RawMessage `json:"amneziawg"`
 		CoreProfileHash      string          `json:"coreProfileHash,omitempty"`
 		ExpectedConfigSha256 string          `json:"expectedConfigSha256,omitempty"`
 		LogRotate            json.RawMessage `json:"logRotate,omitempty"`
 	}
 
 	configBytes := body
-	// Envelope: { "config": {...}, "panelUrl", "telemt": [...] }
+	// Envelope: { "config": {...}, "panelUrl", "telemt": [...], "amneziawg": [...] }
 	if err := json.Unmarshal(body, &requestData); err == nil && len(requestData.Config) > 0 {
 		configBytes = requestData.Config
 		telemtRaw = requestData.Telemt
+		amneziawgRaw = requestData.AmneziaWG
 		reqCoreProfileHash = strings.TrimSpace(requestData.CoreProfileHash)
 		reqExpectedSHA = strings.TrimSpace(requestData.ExpectedConfigSha256)
 		if len(requestData.LogRotate) > 0 {
@@ -409,14 +424,7 @@ func (s *Server) applyConfig(c *gin.Context) {
 		return
 	}
 
-	if s.telemtManager != nil && len(telemtRaw) > 0 && string(telemtRaw) != "null" {
-		var telemtPayloads []telemt.Payload
-		if err := json.Unmarshal(telemtRaw, &telemtPayloads); err != nil {
-			logger.Warningf("telemt: invalid JSON: %v", err)
-		} else if err := s.telemtManager.Apply(telemtPayloads); err != nil {
-			logger.Warningf("telemt: apply: %v", err)
-		}
-	}
+	s.applySidecarPayloads(telemtRaw, amneziawgRaw)
 
 	st := s.xrayManager.GetStatus()
 	appliedAt := time.Now().Unix()
@@ -437,6 +445,80 @@ func (s *Server) applyConfig(c *gin.Context) {
 	logger.Infof("Configuration applied successfully, sending response")
 	c.JSON(http.StatusOK, resp)
 	logger.Infof("Apply config response sent")
+}
+
+func (s *Server) applySidecarPayloads(telemtRaw, amneziawgRaw json.RawMessage) {
+	if s.telemtManager != nil && len(telemtRaw) > 0 && string(telemtRaw) != "null" {
+		var telemtPayloads []telemt.Payload
+		if err := json.Unmarshal(telemtRaw, &telemtPayloads); err != nil {
+			logger.Warningf("telemt: invalid JSON: %v", err)
+		} else if err := s.telemtManager.Apply(telemtPayloads); err != nil {
+			logger.Warningf("telemt: apply: %v", err)
+		}
+	}
+
+	if s.amneziawgManager != nil && len(amneziawgRaw) > 0 && string(amneziawgRaw) != "null" {
+		var awgPayloads []amneziawg.Payload
+		if err := json.Unmarshal(amneziawgRaw, &awgPayloads); err != nil {
+			logger.Warningf("amneziawg: invalid JSON: %v", err)
+		} else if err := s.amneziawgManager.Apply(awgPayloads); err != nil {
+			logger.Warningf("amneziawg: apply: %v", err)
+		}
+	}
+}
+
+// applySidecars updates Telemt / AmneziaWG sidecars without touching Xray-core.
+func (s *Server) applySidecars(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		return
+	}
+
+	var requestData struct {
+		Telemt    json.RawMessage `json:"telemt"`
+		AmneziaWG json.RawMessage `json:"amneziawg"`
+		PanelURL  string          `json:"panelUrl,omitempty"`
+		NodeId    int             `json:"nodeId,omitempty"`
+	}
+	if err := json.Unmarshal(body, &requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	if requestData.NodeId > 0 {
+		if err := nodeConfig.SetNodeId(requestData.NodeId); err != nil {
+			logger.Warningf("apply-sidecars: persist node id: %v", err)
+		}
+	}
+	if requestData.PanelURL != "" {
+		panelURL := requestData.PanelURL
+		go try(func() {
+			if err := nodeConfig.SetPanelURL(panelURL); err != nil {
+				logger.Warningf("apply-sidecars: persist panel URL: %v", err)
+			}
+			nodeLogs.SetPanelURL(panelURL)
+		})
+	}
+
+	logger.Infof("apply-sidecars: syncing sidecars (Xray untouched)")
+	s.applySidecarPayloads(requestData.Telemt, requestData.AmneziaWG)
+
+	tCount, aCount := 0, 0
+	if s.telemtManager != nil {
+		tCount = s.telemtManager.RunningCount()
+	}
+	if s.amneziawgManager != nil {
+		aCount = s.amneziawgManager.RunningCount()
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message":          "Sidecars applied successfully",
+		"appliedAt":        time.Now().Unix(),
+		"telemtRunning":    tCount > 0,
+		"telemtCount":      tCount,
+		"amneziawgRunning": aCount > 0,
+		"amneziawgCount":   aCount,
+	})
 }
 
 // stopXray stops the Xray core process on this worker. Telemt sidecars are unaffected; use POST /stop-telemt separately.
@@ -483,6 +565,39 @@ func (s *Server) restartTelemt(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Telemt restarted", "telemtRunning": tCount > 0, "telemtCount": tCount})
 }
 
+// stopAmneziaWg stops AmneziaWG sidecars only (Xray keeps running).
+func (s *Server) stopAmneziaWg(c *gin.Context) {
+	logger.Infof("stop-amneziawg: stopping AmneziaWG sidecars on worker")
+	if s.amneziawgManager == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "AmneziaWG not configured", "amneziawgRunning": false, "amneziawgCount": 0})
+		return
+	}
+	s.amneziawgManager.Stop()
+	c.JSON(http.StatusOK, gin.H{"message": "AmneziaWG stopped", "amneziawgRunning": false, "amneziawgCount": 0})
+}
+
+// restartAmneziaWg stops AmneziaWG sidecars and reapplies the last successful payloads from the panel.
+func (s *Server) restartAmneziaWg(c *gin.Context) {
+	logger.Infof("restart-amneziawg: restarting AmneziaWG sidecars on worker")
+	if s.amneziawgManager == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "AmneziaWG not configured", "amneziawgRunning": false, "amneziawgCount": 0})
+		return
+	}
+	payloads, ok := s.amneziawgManager.ReplaySnapshotForRestart()
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no AmneziaWG config applied yet; push config from the panel first"})
+		return
+	}
+	s.amneziawgManager.Stop()
+	if err := s.amneziawgManager.Apply(payloads); err != nil {
+		logger.Errorf("restart-amneziawg: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	aCount := s.amneziawgManager.RunningCount()
+	c.JSON(http.StatusOK, gin.H{"message": "AmneziaWG restarted", "amneziawgRunning": aCount > 0, "amneziawgCount": aCount})
+}
+
 // reload reloads XRAY configuration.
 func (s *Server) reload(c *gin.Context) {
 	if err := s.xrayManager.Reload(); err != nil {
@@ -512,9 +627,15 @@ func (s *Server) status(c *gin.Context) {
 	if s.telemtManager != nil {
 		tCount = s.telemtManager.RunningCount()
 	}
+	aCount := 0
+	if s.amneziawgManager != nil {
+		aCount = s.amneziawgManager.RunningCount()
+	}
 	status["telemtRunning"] = tCount > 0
 	status["telemtCount"] = tCount
 	status["telemtVersion"] = telemtinstall.ReadVersion("")
+	status["amneziawgRunning"] = aCount > 0
+	status["amneziawgCount"] = aCount
 	status["sharxVersion"] = config.GetVersion()
 	for k, v := range hostMetricsForStatusJSON() {
 		status[k] = v

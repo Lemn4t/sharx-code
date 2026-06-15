@@ -20,6 +20,7 @@ import (
 	"github.com/konstpic/sharx-code/v2/node/defaults"
 	"github.com/konstpic/sharx-code/v2/node/geopush"
 	nodeLogs "github.com/konstpic/sharx-code/v2/node/logs"
+	"github.com/konstpic/sharx-code/v2/node/amneziawg"
 	"github.com/konstpic/sharx-code/v2/node/telemt"
 	"github.com/konstpic/sharx-code/v2/node/xray"
 	"github.com/konstpic/sharx-code/v2/util/pairing_outbound"
@@ -89,11 +90,12 @@ func main() {
 
 	xrayManager := xray.NewManager()
 	telemtManager := telemt.NewManager()
+	amneziawgManager := amneziawg.NewManager()
 	if panelURL != "" {
-		configpull.TryPullAndApply(panelURL, nodeAddress, h, xrayManager, telemtManager)
-		configpull.StartBackgroundPull(panelURL, nodeAddress, h, xrayManager, telemtManager)
+		configpull.TryPullAndApply(panelURL, nodeAddress, h, xrayManager, telemtManager, amneziawgManager)
+		configpull.StartBackgroundPull(panelURL, nodeAddress, h, xrayManager, telemtManager, amneziawgManager)
 	}
-	server := api.NewServer(port, xrayManager, telemtManager)
+	server := api.NewServer(port, xrayManager, telemtManager, amneziawgManager)
 	server.SetPairing(bundle)
 	logger.Info("SECRET_KEY: TLS + mTLS + JWT; log push uses HMAC (optional PANEL_URL in config or env)")
 
@@ -119,6 +121,7 @@ func main() {
 		logger.Info("Shutting down...")
 		xrayManager.Stop()
 		telemtManager.Stop()
+		amneziawgManager.Stop()
 		if err := server.Stop(); err != nil {
 			logger.Warningf("server stop: %v", err)
 		}

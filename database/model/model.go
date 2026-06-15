@@ -27,11 +27,23 @@ const (
 	Hysteria2 Protocol = "hysteria2"
 	// Telemt is an MTProto proxy (external binary), not an Xray inbound protocol.
 	Telemt Protocol = "telemt"
+	// AmneziaWG is AmneziaWG-go userspace (external binary), not an Xray inbound protocol.
+	AmneziaWG Protocol = "amneziawg"
 )
+
+// IsSidecarProtocol reports inbounds supervised outside Xray-core (Telemt, AmneziaWG-go, …).
+func IsSidecarProtocol(p Protocol) bool {
+	switch NormalizeProtocol(p) {
+	case Telemt, AmneziaWG:
+		return true
+	default:
+		return false
+	}
+}
 
 // IsXrayInboundProtocol reports whether the panel should emit this inbound into Xray JSON.
 func IsXrayInboundProtocol(p Protocol) bool {
-	return NormalizeProtocol(p) != Telemt
+	return !IsSidecarProtocol(p)
 }
 
 // IsHysteria returns true for both "hysteria" and "hysteria2" (imports may use the v2 literal).
@@ -270,6 +282,13 @@ const (
 	NodeTelemtUnknown = "unknown"
 )
 
+// Node AmneziaWgState values: worker AmneziaWG sidecars as reported by the node API.
+const (
+	NodeAmneziaWgRunning = "running"
+	NodeAmneziaWgStopped = "stopped"
+	NodeAmneziaWgUnknown = "unknown"
+)
+
 // Node represents a worker node in multi-node architecture.
 type Node struct {
 	Id           int    `json:"id" gorm:"primaryKey;autoIncrement"`                                      // Unique identifier
@@ -291,6 +310,7 @@ type Node struct {
 	WorkerVersion string `json:"workerVersion" gorm:"column:worker_version;default:''"`                     // cached SharX worker build/version from node API (sharxVersion)
 	TelemtState   string `json:"telemtState" gorm:"column:telemt_state;default:unknown"`                 // running | stopped | unknown (worker Telemt sidecars)
 	TelemtVersion string `json:"telemtVersion" gorm:"column:telemt_version;default:''"`                  // cached Telemt version from worker (e.g. "3.4.13"), empty when unknown
+	AmneziaWgState string `json:"amneziawgState" gorm:"column:amneziawg_state;default:unknown"`          // running | stopped | unknown (worker AmneziaWG sidecars)
 
 	// Pairing (auth_mode=pairing): panel stores JWT key and mTLS client cert; worker uses SECRET_KEY. Legacy values accepted; see IsPairingMode.
 	AuthMode           string `json:"authMode" gorm:"column:auth_mode;default:legacy"` // legacy | pairing

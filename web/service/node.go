@@ -344,6 +344,120 @@ func statusMapRunning(v interface{}) bool {
 	}
 }
 
+// SetNodeAmneziaWgState persists worker AmneziaWG sidecar state (running | stopped | unknown).
+func (s *NodeService) SetNodeAmneziaWgState(id int, state string) error {
+	st := strings.TrimSpace(strings.ToLower(state))
+	switch st {
+	case model.NodeAmneziaWgRunning, model.NodeAmneziaWgStopped, model.NodeAmneziaWgUnknown:
+	default:
+		st = model.NodeAmneziaWgUnknown
+	}
+	return database.GetDB().Model(&model.Node{}).Where("id = ?", id).Update("amneziawg_state", st).Error
+}
+
+func statusMapAmneziaWgRunning(st map[string]interface{}) bool {
+	if st == nil {
+		return false
+	}
+	if v, ok := st["amneziawgRunning"]; ok {
+		return statusMapRunning(v)
+	}
+	if v, ok := st["amneziawgCount"]; ok {
+		switch x := v.(type) {
+		case float64:
+			return x > 0
+		case int:
+			return x > 0
+		case int64:
+			return x > 0
+		}
+	}
+	return false
+}
+
+// RefreshNodeAmneziaWgStateFromWorker sets amneziawg_state from GET /api/v1/status (or unknown on old workers / errors).
+func (s *NodeService) RefreshNodeAmneziaWgStateFromWorker(node *model.Node) error {
+	if node == nil {
+		return nil
+	}
+	if !node.Enable {
+		return s.SetNodeAmneziaWgState(node.Id, model.NodeAmneziaWgStopped)
+	}
+	st, err := s.GetNodeStatus(node)
+	if err != nil {
+		return s.SetNodeAmneziaWgState(node.Id, model.NodeAmneziaWgUnknown)
+	}
+	_, hasTR := st["amneziawgRunning"]
+	_, hasTC := st["amneziawgCount"]
+	if !hasTR && !hasTC {
+		return s.SetNodeAmneziaWgState(node.Id, model.NodeAmneziaWgUnknown)
+	}
+	if statusMapAmneziaWgRunning(st) {
+		return s.SetNodeAmneziaWgState(node.Id, model.NodeAmneziaWgRunning)
+	}
+	return s.SetNodeAmneziaWgState(node.Id, model.NodeAmneziaWgStopped)
+}
+
+// StopAmneziaWgOnNode stops AmneziaWG sidecars on the worker without stopping Xray.
+func (s *NodeService) StopAmneziaWgOnNode(node *model.Node) error {
+	if node == nil {
+		return fmt.Errorf("node is nil")
+	}
+	client, err := s.createHTTPClient(node, 30*time.Second)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/api/v1/stop-amneziawg", nodeRequestBaseURL(node))
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return err
+	}
+	if err := s.setNodeAuthHeader(node, req); err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("stop-amneziawg: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	_ = s.SetNodeAmneziaWgState(node.Id, model.NodeAmneziaWgStopped)
+	return nil
+}
+
+// RestartAmneziaWgOnNode restarts AmneziaWG sidecars on the worker (last applied payloads).
+func (s *NodeService) RestartAmneziaWgOnNode(node *model.Node) error {
+	if node == nil {
+		return fmt.Errorf("node is nil")
+	}
+	client, err := s.createHTTPClient(node, 60*time.Second)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/api/v1/restart-amneziawg", nodeRequestBaseURL(node))
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return err
+	}
+	if err := s.setNodeAuthHeader(node, req); err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("restart-amneziawg: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	_ = s.RefreshNodeAmneziaWgStateFromWorker(node)
+	return nil
+}
+
 func statusMapTelemtRunning(st map[string]interface{}) bool {
 	if st == nil {
 		return false
@@ -514,6 +628,7 @@ func (s *NodeService) StopXrayOnNode(node *model.Node) error {
 	}
 	_ = s.SetNodeXrayState(node.Id, model.NodeXrayStopped)
 	_ = s.RefreshNodeTelemtStateFromWorker(node)
+	_ = s.RefreshNodeAmneziaWgStateFromWorker(node)
 	return nil
 }
 
@@ -574,6 +689,7 @@ func (s *NodeService) RestartTelemtOnNode(node *model.Node) error {
 		return fmt.Errorf("restart-telemt: HTTP %d: %s", resp.StatusCode, string(body))
 	}
 	_ = s.RefreshNodeTelemtStateFromWorker(node)
+	_ = s.RefreshNodeAmneziaWgStateFromWorker(node)
 	return nil
 }
 
@@ -657,6 +773,7 @@ func (s *NodeService) CheckNodeHealth(node *model.Node) error {
 		_ = s.SetNodeXrayVersion(node.Id, "")
 		_ = s.SetNodeWorkerVersion(node.Id, "")
 		_ = s.SetNodeTelemtState(node.Id, model.NodeTelemtStopped)
+		_ = s.SetNodeAmneziaWgState(node.Id, model.NodeAmneziaWgStopped)
 		return nil
 	}
 	// Get previous status before checking (to detect status changes)
@@ -674,6 +791,7 @@ func (s *NodeService) CheckNodeHealth(node *model.Node) error {
 		_ = s.SetNodeXrayVersion(node.Id, "")
 		_ = s.SetNodeWorkerVersion(node.Id, "")
 		_ = s.SetNodeTelemtState(node.Id, model.NodeTelemtUnknown)
+		_ = s.SetNodeAmneziaWgState(node.Id, model.NodeAmneziaWgUnknown)
 		sendDown, _, downFrom := nodeHealthTgHysteresisAfterCheck(node.Id, true, previousStatus)
 		if sendDown {
 			if downFrom == "" {
@@ -700,6 +818,7 @@ func (s *NodeService) CheckNodeHealth(node *model.Node) error {
 	if fresh, gErr := s.GetNode(node.Id); gErr == nil && fresh.Enable {
 		_ = s.RefreshNodeXrayStateFromWorker(fresh)
 		_ = s.RefreshNodeTelemtStateFromWorker(fresh)
+		_ = s.RefreshNodeAmneziaWgStateFromWorker(fresh)
 		s.MaybePushWorkerConfigIfCoresDown(fresh)
 	}
 	return nil
@@ -729,14 +848,21 @@ func (s *NodeService) MaybePushWorkerConfigIfCoresDown(node *model.Node) {
 		return
 	}
 	needsTelemt := false
+	needsAwg := false
 	for _, ib := range inbounds {
-		if ib != nil && model.NormalizeProtocol(ib.Protocol) == model.Telemt {
+		if ib == nil {
+			continue
+		}
+		switch model.NormalizeProtocol(ib.Protocol) {
+		case model.Telemt:
 			needsTelemt = true
-			break
+		case model.AmneziaWG:
+			needsAwg = true
 		}
 	}
 	telemtOK := health.TelemtRunning || health.TelemtCount > 0
-	if health.XrayRunning && (!needsTelemt || telemtOK) {
+	awgOK := health.AmneziaWgRunning || health.AmneziaWgCount > 0
+	if health.XrayRunning && (!needsTelemt || telemtOK) && (!needsAwg || awgOK) {
 		return
 	}
 
@@ -749,12 +875,12 @@ func (s *NodeService) MaybePushWorkerConfigIfCoresDown(node *model.Node) {
 			return
 		}
 		ibs, _ := xs.InboundsForWorkerNode(n)
-		telm, terr := BuildTelemtPayloadsForNode(n, ibs)
+		telm, awg, terr := BuildWorkerSidecarPayloadsForNode(n, ibs)
 		if terr != nil {
-			logger.Warningf("[Node: %s] Worker config recover: build telemt: %v", n.Name, terr)
+			logger.Warningf("[Node: %s] Worker config recover: build sidecars: %v", n.Name, terr)
 		}
 		meta := NewApplyWorkerConfigMeta(cfgJSON, coreH)
-		if err := s.ApplyConfigToNode(n, cfgJSON, &telm, meta); err != nil {
+		if err := s.ApplyConfigToNode(n, cfgJSON, &telm, &awg, meta); err != nil {
 			logger.Warningf("[Node: %s] Worker config recover: apply-config: %v", n.Name, err)
 			return
 		}
@@ -969,6 +1095,8 @@ type NodePublicHealth struct {
 	XrayUptime    int64  `json:"xrayUptime"`
 	TelemtRunning bool   `json:"telemtRunning"`
 	TelemtCount   int    `json:"telemtCount"`
+	AmneziaWgRunning bool `json:"amneziawgRunning"`
+	AmneziaWgCount   int    `json:"amneziawgCount"`
 }
 
 // isExpectedNodeStatsFailure returns true for errors that are normal when Xray is not up yet.
@@ -2391,9 +2519,9 @@ func (s *NodeService) syncInboundAssignmentToNodes(inboundId int, oldNodeIds, ne
 							return
 						}
 						ibs, _ := xs.InboundsForWorkerNode(node)
-						telm, _ := BuildTelemtPayloadsForNode(node, ibs)
+						telm, awg, _ := BuildWorkerSidecarPayloadsForNode(node, ibs)
 						meta := NewApplyWorkerConfigMeta(cfgJSON, coreH)
-						if apErr := s.ApplyConfigToNode(node, cfgJSON, &telm, meta); apErr != nil {
+						if apErr := s.ApplyConfigToNode(node, cfgJSON, &telm, &awg, meta); apErr != nil {
 							recordErr(fmt.Errorf("fallback apply-config to node %s: %w", node.Name, apErr))
 							return
 						}
@@ -2523,10 +2651,10 @@ func NewApplyWorkerConfigMeta(workerJSON []byte, coreProfileHashHex string) *App
 	}
 }
 
-// ApplyConfigToNode sends XRAY JSON and optional Telemt TOML payloads to a node.
-// When telemt is non-nil, the array is always sent (empty slice stops all Telemt sidecars on the worker).
+// ApplyConfigToNode sends XRAY JSON and optional Telemt / AmneziaWG payloads to a node.
+// When telemt or amneziawg is non-nil, the array is always sent (empty slice stops all sidecars of that type).
 // meta may be nil; when set, coreProfileHash and expectedConfigSha256 are included in the apply-config body.
-func (s *NodeService) ApplyConfigToNode(node *model.Node, xrayConfig []byte, telemt *[]TelemtNodePayload, meta *ApplyWorkerConfigMeta) error {
+func (s *NodeService) ApplyConfigToNode(node *model.Node, xrayConfig []byte, telemt *[]TelemtNodePayload, amneziawg *[]AmneziaWGNodePayload, meta *ApplyWorkerConfigMeta) error {
 	// Use reasonable timeout for apply-config (30 seconds should be enough for most cases)
 	// If config is very large or node is slow, this can be increased
 	client, err := s.createHTTPClient(node, 30*time.Second)
@@ -2552,6 +2680,13 @@ func (s *NodeService) ApplyConfigToNode(node *model.Node, xrayConfig []byte, tel
 			payload = []TelemtNodePayload{}
 		}
 		requestBody["telemt"] = payload
+	}
+	if amneziawg != nil {
+		payload := *amneziawg
+		if payload == nil {
+			payload = []AmneziaWGNodePayload{}
+		}
+		requestBody["amneziawg"] = payload
 	}
 	if meta != nil {
 		if meta.CoreProfileHash != "" {
@@ -2627,7 +2762,70 @@ func (s *NodeService) ApplyConfigToNode(node *model.Node, xrayConfig []byte, tel
 		_ = s.RefreshNodeXrayStateFromWorker(node)
 	}
 	_ = s.RefreshNodeTelemtStateFromWorker(node)
+	_ = s.RefreshNodeAmneziaWgStateFromWorker(node)
 
+	return nil
+}
+
+// ApplySidecarsToNode pushes Telemt / AmneziaWG payloads to a worker without touching Xray-core.
+func (s *NodeService) ApplySidecarsToNode(node *model.Node, telemt *[]TelemtNodePayload, amneziawg *[]AmneziaWGNodePayload) error {
+	client, err := s.createHTTPClient(node, 30*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+
+	panelURL := s.getPanelURL()
+	requestBody := map[string]interface{}{
+		"nodeId": node.Id,
+	}
+	if panelURL != "" {
+		requestBody["panelUrl"] = panelURL
+	}
+	if telemt != nil {
+		payload := *telemt
+		if payload == nil {
+			payload = []TelemtNodePayload{}
+		}
+		requestBody["telemt"] = payload
+	}
+	if amneziawg != nil {
+		payload := *amneziawg
+		if payload == nil {
+			payload = []AmneziaWGNodePayload{}
+		}
+		requestBody["amneziawg"] = payload
+	}
+
+	requestJSON, err := json.Marshal(requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/apply-sidecars", nodeRequestBaseURL(node))
+	logger.Infof("[Node: %s] apply-sidecars to %s (%d bytes)", node.Name, url, len(requestJSON))
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestJSON))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if err := s.setNodeAuthHeader(node, req); err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("node returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	_ = s.RefreshNodeTelemtStateFromWorker(node)
+	_ = s.RefreshNodeAmneziaWgStateFromWorker(node)
 	return nil
 }
 
@@ -3290,6 +3488,7 @@ func (s *NodeService) InstallTelemtVersion(node *model.Node, version string) err
 	}
 
 	_ = s.RefreshNodeTelemtStateFromWorker(node)
+	_ = s.RefreshNodeAmneziaWgStateFromWorker(node)
 	return nil
 }
 

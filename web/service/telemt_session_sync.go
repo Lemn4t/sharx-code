@@ -62,13 +62,13 @@ func SyncTelemtAfterClientSessionBlocksChanged(clientId int) {
 					logger.Warningf("telemt session sync: build xray for node %s: %v", node.Name, err)
 					continue
 				}
-				telm, err := BuildTelemtPayloadsForNode(node, ibs)
+				telm, awg, err := BuildWorkerSidecarPayloadsForNode(node, ibs)
 				if err != nil {
-					logger.Warningf("telemt session sync: build telemt for node %s: %v", node.Name, err)
+					logger.Warningf("telemt session sync: build sidecars for node %s: %v", node.Name, err)
 					continue
 				}
 				meta := NewApplyWorkerConfigMeta(cfgJSON, coreH)
-				if err := ns.ApplyConfigToNode(node, cfgJSON, &telm, meta); err != nil {
+				if err := ns.ApplyConfigToNode(node, cfgJSON, &telm, &awg, meta); err != nil {
 					logger.Warningf("telemt session sync: apply node %s: %v", node.Name, err)
 				}
 			}

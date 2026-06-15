@@ -8,7 +8,6 @@ import {
   type AppButton,
   type BlockAddToApp,
 } from "@/lib/sharxSubpageConfig";
-import { isWireGuardOnlySubscription } from "@/lib/wireguardConf";
 import { resolveMtProtoLinks, tgProxyDisplayLabel } from "../types";
 import shell from "../subscription-shell.module.css";
 import type { BlockRenderContext } from "./index";
@@ -162,8 +161,8 @@ export function AddToAppBlock({
   if (!data.subscriptionUrl) return null;
 
   const normalized = normalizeAddToAppBlock(block);
-  const wgOnly = isWireGuardOnlySubscription(data.links ?? []);
-  const buttons = filterAppsForSubscriptionProtocol(normalized.buttons ?? [], wgOnly);
+  const links = data.links ?? [];
+  const buttons = filterAppsForSubscriptionProtocol(normalized.buttons ?? [], links);
   if (buttons.length === 0) return null;
 
   const preferJsonUrl = normalized.preferJsonUrl;

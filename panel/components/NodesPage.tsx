@@ -40,6 +40,7 @@ import { NodeColumnFiltersBar } from "@/components/nodes/NodeColumnFiltersBar";
 import {
   NodeStatusBadge,
   TelemtStateBadge,
+  AmneziaWgStateBadge,
   XrayStateBadge,
 } from "@/components/nodes/nodeBadges";
 import {
@@ -99,6 +100,8 @@ type NodeRow = {
   xrayState?: string;
   /** Worker Telemt sidecars: running | stopped | unknown */
   telemtState?: string;
+  /** Worker AmneziaWG sidecars: running | stopped | unknown */
+  amneziawgState?: string;
   /** When false, panel skips health, stats, and config to this node */
   enable?: boolean;
 };
@@ -255,6 +258,8 @@ export function NodesPage() {
   const [telemtStoppingId, setTelemtStoppingId] = useState<number | null>(null);
   const [xrayStoppingId, setXrayStoppingId] = useState<number | null>(null);
   const [telemtRestartingId, setTelemtRestartingId] = useState<number | null>(null);
+  const [amneziawgStoppingId, setAmneziawgStoppingId] = useState<number | null>(null);
+  const [amneziawgRestartingId, setAmneziawgRestartingId] = useState<number | null>(null);
   const [xrayRestartingId, setXrayRestartingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
@@ -809,6 +814,52 @@ export function NodesPage() {
     [load, t, toast],
   );
 
+  const stopAmneziaWgOnRow = useCallback(
+    async (row: NodeRow) => {
+      if (!row.enable || row.amneziawgState !== "running") return;
+      setAmneziawgStoppingId(row.id);
+      try {
+        const r = await postJson(panel(`node/stopAmneziaWg/${row.id}`), {}, true);
+        if (r.success) {
+          toast.success(t("pages.nodes.amneziawgStopSuccess"));
+          void load();
+        } else {
+          toast.error(
+            (r as { msg?: string }).msg || t("pages.nodes.amneziawgStopError"),
+          );
+        }
+      } catch {
+        toast.error(t("pages.nodes.amneziawgStopError"));
+      } finally {
+        setAmneziawgStoppingId(null);
+      }
+    },
+    [load, t, toast],
+  );
+
+  const restartAmneziaWgOnRow = useCallback(
+    async (row: NodeRow) => {
+      if (!row.enable) return;
+      setAmneziawgRestartingId(row.id);
+      try {
+        const r = await postJson(panel(`node/restartAmneziaWg/${row.id}`), {}, true);
+        if (r.success) {
+          toast.success(t("pages.nodes.amneziawgRestartSuccess"));
+          void load();
+        } else {
+          toast.error(
+            (r as { msg?: string }).msg || t("pages.nodes.amneziawgRestartError"),
+          );
+        }
+      } catch {
+        toast.error(t("pages.nodes.amneziawgRestartError"));
+      } finally {
+        setAmneziawgRestartingId(null);
+      }
+    },
+    [load, t, toast],
+  );
+
   const stopXrayOnRow = useCallback(
     async (row: NodeRow) => {
       if (!row.enable || row.xrayState !== "running") return;
@@ -1053,6 +1104,10 @@ export function NodesPage() {
       onRestartTelemt: (r: NodeRow) => void restartTelemtOnRow(r),
       telemtStoppingId,
       telemtRestartingId,
+      onStopAmneziaWg: (r: NodeRow) => void stopAmneziaWgOnRow(r),
+      onRestartAmneziaWg: (r: NodeRow) => void restartAmneziaWgOnRow(r),
+      amneziawgStoppingId,
+      amneziawgRestartingId,
       onMetrics: (r: NodeRow) => setMetricsNode({ id: r.id, name: r.name }),
       onDelete: (r: NodeRow) => setDeleteTarget(r),
     }),
@@ -1070,6 +1125,10 @@ export function NodesPage() {
       restartTelemtOnRow,
       telemtStoppingId,
       telemtRestartingId,
+      stopAmneziaWgOnRow,
+      restartAmneziaWgOnRow,
+      amneziawgStoppingId,
+      amneziawgRestartingId,
     ],
   );
 
@@ -1222,7 +1281,7 @@ export function NodesPage() {
                   <th className="p-3">{t("pages.nodes.xrayState")}</th>
                   <th className="p-3">{t("pages.nodes.telemtVersion")}</th>
                   <th className="p-3">
-                    {t("pages.nodes.telemtState")}
+                    {t("pages.nodes.sidecarsState", { defaultValue: "Sidecars" })}
                   </th>
                   <th className="p-3">{t("pages.nodes.assignedInbounds")}</th>
                   <th className="p-3 w-28">{t("pages.nodes.operate")}</th>
@@ -1351,57 +1410,88 @@ export function NodesPage() {
                       className="p-3"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="flex items-center gap-1">
-                        <TelemtStateBadge state={r.telemtState} t={t} />
-                        {r.enable ? (
-                          <>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
-                              loading={telemtStoppingId === r.id}
-                              disabled={
-                                (r.telemtState || "").toLowerCase() !== "running" ||
-                                telemtStoppingId === r.id ||
-                                telemtRestartingId === r.id
-                              }
-                              title={
-                                (r.telemtState || "").toLowerCase() === "running"
-                                  ? t("pages.nodes.stopTelemtOnNode")
-                                  : t("pages.nodes.telemtStoppedPowerInactiveHint", {
-                                      defaultValue:
-                                        "Telemt is stopped — use the curved arrow beside this button (restart) to start it again.",
-                                    })
-                              }
-                              aria-label={
-                                (r.telemtState || "").toLowerCase() === "running"
-                                  ? t("pages.nodes.stopTelemtOnNode")
-                                  : t("pages.nodes.telemtStoppedPowerInactiveHint", {
-                                      defaultValue:
-                                        "Telemt is stopped — use the curved arrow beside this button (restart) to start it again.",
-                                    })
-                              }
-                              onClick={() => void stopTelemtOnRow(r)}
-                            >
-                              <Power size={16} />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="!p-1.5 text-[var(--fg-muted)] hover:text-sky-300 disabled:opacity-40"
-                              loading={telemtRestartingId === r.id}
-                              disabled={
-                                telemtRestartingId === r.id ||
-                                telemtStoppingId === r.id
-                              }
-                              title={t("pages.nodes.restartTelemtOnNode")}
-                              aria-label={t("pages.nodes.restartTelemtOnNode")}
-                              onClick={() => void restartTelemtOnRow(r)}
-                            >
-                              <RefreshCw size={16} />
-                            </Button>
-                          </>
-                        ) : null}
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-1">
+                          <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-[var(--fg-subtle)]">
+                            {t("pages.nodes.telemtState")}
+                          </span>
+                          <TelemtStateBadge state={r.telemtState} t={t} />
+                          {r.enable ? (
+                            <>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
+                                loading={telemtStoppingId === r.id}
+                                disabled={
+                                  (r.telemtState || "").toLowerCase() !== "running" ||
+                                  telemtStoppingId === r.id ||
+                                  telemtRestartingId === r.id
+                                }
+                                title={t("pages.nodes.stopTelemtOnNode")}
+                                aria-label={t("pages.nodes.stopTelemtOnNode")}
+                                onClick={() => void stopTelemtOnRow(r)}
+                              >
+                                <Power size={16} />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="!p-1.5 text-[var(--fg-muted)] hover:text-sky-300 disabled:opacity-40"
+                                loading={telemtRestartingId === r.id}
+                                disabled={
+                                  telemtRestartingId === r.id || telemtStoppingId === r.id
+                                }
+                                title={t("pages.nodes.restartTelemtOnNode")}
+                                aria-label={t("pages.nodes.restartTelemtOnNode")}
+                                onClick={() => void restartTelemtOnRow(r)}
+                              >
+                                <RefreshCw size={16} />
+                              </Button>
+                            </>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-[var(--fg-subtle)]">
+                            AWG
+                          </span>
+                          <AmneziaWgStateBadge state={r.amneziawgState} t={t} />
+                          {r.enable ? (
+                            <>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="!p-1.5 text-[var(--fg-muted)] hover:text-amber-300 disabled:opacity-40"
+                                loading={amneziawgStoppingId === r.id}
+                                disabled={
+                                  (r.amneziawgState || "").toLowerCase() !== "running" ||
+                                  amneziawgStoppingId === r.id ||
+                                  amneziawgRestartingId === r.id
+                                }
+                                title={t("pages.nodes.stopAmneziaWgOnNode")}
+                                aria-label={t("pages.nodes.stopAmneziaWgOnNode")}
+                                onClick={() => void stopAmneziaWgOnRow(r)}
+                              >
+                                <Power size={16} />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="!p-1.5 text-[var(--fg-muted)] hover:text-sky-300 disabled:opacity-40"
+                                loading={amneziawgRestartingId === r.id}
+                                disabled={
+                                  amneziawgRestartingId === r.id ||
+                                  amneziawgStoppingId === r.id
+                                }
+                                title={t("pages.nodes.restartAmneziaWgOnNode")}
+                                aria-label={t("pages.nodes.restartAmneziaWgOnNode")}
+                                onClick={() => void restartAmneziaWgOnRow(r)}
+                              >
+                                <RefreshCw size={16} />
+                              </Button>
+                            </>
+                          ) : null}
+                        </div>
                       </div>
                     </td>
                     <td className="p-3 max-w-[220px] text-xs">

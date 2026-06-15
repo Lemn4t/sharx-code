@@ -350,12 +350,16 @@ func (s *InboundService) BuildSettingsFromClientEntities(inbound *model.Inbound,
 		settings = make(map[string]any)
 	}
 
-	// WireGuard: merge assigned clients into `peers` (keys, PSK, keepAlive, allowedIPs) while preserving manual peers and server block.
-	if proto == model.WireGuard {
+	// WireGuard / AmneziaWG: merge assigned clients into `peers` while preserving server block.
+	if proto == model.WireGuard || proto == model.AmneziaWG {
 		base := strings.TrimSpace(inbound.Settings)
 		if base == "" {
 			var err error
-			base, err = BuildWireGuardInboundSettingsJSON(nil)
+			if proto == model.WireGuard {
+				base, err = BuildWireGuardInboundSettingsJSON(nil)
+			} else {
+				base, err = BuildAmneziaWGInboundSettingsJSON(nil)
+			}
 			if err != nil {
 				return "", err
 			}
@@ -371,7 +375,10 @@ func (s *InboundService) BuildSettingsFromClientEntities(inbound *model.Inbound,
 		if err != nil {
 			return "", err
 		}
-		return applyWireGuardSettingsAddressForXray(string(settingsJSON)), nil
+		if proto == model.WireGuard {
+			return applyWireGuardSettingsAddressForXray(string(settingsJSON)), nil
+		}
+		return string(settingsJSON), nil
 	}
 
 	// Mixed inbound (HTTP + SOCKS on one port): Xray uses `accounts`, not `clients`.
@@ -938,8 +945,8 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 
 	SanitizeVLESSFlowInInboundSettings(inbound)
 
-	// WireGuard: panel no longer posts peers; keep existing DB peers (from client assignment).
-	if model.NormalizeProtocol(inbound.Protocol) == model.WireGuard {
+	// WireGuard / AmneziaWG: panel no longer posts peers; keep existing DB peers (from client assignment).
+	if model.NormalizeProtocol(inbound.Protocol) == model.WireGuard || model.NormalizeProtocol(inbound.Protocol) == model.AmneziaWG {
 		merged, err2 := PreserveWireGuardPeersOnInboundUpdate(inbound.Settings, oldInbound.Settings)
 		if err2 != nil {
 			return inbound, false, err2
@@ -1063,15 +1070,15 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 	// Check multi-node mode (reuse variables already declared above)
 	// settingService and multiMode are already declared at the beginning of the function
 
-	isTelemtInbound := model.NormalizeProtocol(inbound.Protocol) == model.Telemt
+	isSidecarInbound := model.IsSidecarProtocol(inbound.Protocol)
 
 	// Use fast API update if:
 	// 1. Only Settings changed (clients list) compared to DB snapshot before this call, OR
 	// 2. Structure unchanged (tag/port/protocol/stream/sniff same) — covers race where DB was
 	//    already updated by a concurrent goroutine before we read oldInbound, OR
 	// 3. In single mode and Xray is running locally
-	// Telemt is never updated via Xray API — always full push / restart.
-	useFastAPI := !isTelemtInbound && (onlySettingsChanged || (multiMode && structureUnchanged) || (p != nil && !multiMode))
+	// Sidecar inbounds (Telemt, AmneziaWG) are never updated via Xray API — always full push / restart.
+	useFastAPI := !isSidecarInbound && (onlySettingsChanged || (multiMode && structureUnchanged) || (p != nil && !multiMode))
 
 	logger.Debugf("UpdateInbound: inboundId=%d tag=%s multiMode=%v onlySettingsChanged=%v settingsMatchDB=%v useFastAPI=%v structureUnchanged=%v",
 		inbound.Id, tag, multiMode, onlySettingsChanged, settingsMatchDB, useFastAPI, structureUnchanged)

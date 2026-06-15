@@ -459,6 +459,7 @@ func (s *XrayService) RestartXray(isForce bool) error {
 
 	if multiMode {
 		StopLocalTelemtStandalone()
+		StopLocalAmneziaWgStandalone()
 		return s.restartXrayMultiMode(isForce)
 	}
 
@@ -493,6 +494,7 @@ func (s *XrayService) RestartXray(isForce bool) error {
 	}
 
 	TryApplyLocalTelemtStandalone(s)
+	TryApplyLocalAmneziaWgStandalone(s)
 	return nil
 }
 
@@ -562,9 +564,9 @@ func (s *XrayService) ApplySessionIPBlockHotAfterDB(clientId int, email, normali
 					continue
 				}
 				ibs, _ := s.InboundsForWorkerNode(n)
-				telm, _ := BuildTelemtPayloadsForNode(n, ibs)
+				telm, awg, _ := BuildWorkerSidecarPayloadsForNode(n, ibs)
 				meta := NewApplyWorkerConfigMeta(cfgJSON, coreH)
-				if err := ns.ApplyConfigToNode(n, cfgJSON, &telm, meta); err != nil {
+				if err := ns.ApplyConfigToNode(n, cfgJSON, &telm, &awg, meta); err != nil {
 					logger.Warningf("session IP block: apply-config fallback node %q: %v", n.Name, err)
 				}
 			}
@@ -985,12 +987,12 @@ func (s *XrayService) applyWorkerConfigToNodeIDsMulti(nodeIDs []int) error {
 				return
 			}
 			ibs, _ := s.InboundsForWorkerNode(n)
-			telm, terr := BuildTelemtPayloadsForNode(n, ibs)
+			telm, awg, terr := BuildWorkerSidecarPayloadsForNode(n, ibs)
 			if terr != nil {
-				logger.Warningf("[Node: %s] Telemt payload build: %v", n.Name, terr)
+				logger.Warningf("[Node: %s] Sidecar payload build: %v", n.Name, terr)
 			}
 			meta := NewApplyWorkerConfigMeta(configJSON, coreH)
-			if err := s.nodeService.ApplyConfigToNode(n, configJSON, &telm, meta); err != nil {
+			if err := s.nodeService.ApplyConfigToNode(n, configJSON, &telm, &awg, meta); err != nil {
 				logger.Errorf("[Node: %s] Failed to apply config: %v", n.Name, err)
 				mu.Lock()
 				errors = append(errors, fmt.Errorf("node %s: %w", n.Name, err))
