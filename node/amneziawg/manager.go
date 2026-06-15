@@ -32,12 +32,14 @@ const (
 	setconfRetryInterval = 200 * time.Millisecond
 )
 
-// Payload is one inbound's awg-quick config and interface name.
+// Payload is one inbound's awg setconf config and interface name.
 type Payload struct {
-	InboundId int    `json:"inboundId"`
-	Tag       string `json:"tag"`
-	Conf      string `json:"conf"`
-	Iface     string `json:"iface"`
+	InboundId     int    `json:"inboundId"`
+	Tag           string `json:"tag"`
+	Conf          string `json:"conf"`
+	Iface         string `json:"iface"`
+	TunnelAddress string `json:"tunnelAddress,omitempty"`
+	TunnelSubnet  string `json:"tunnelSubnet,omitempty"`
 }
 
 // Manager supervises one amneziawg-go process per inbound tag.
@@ -141,6 +143,62 @@ func teardownWireGuardIface(iface string) {
 	}
 }
 
+func tunnelSubnetFromPayload(p Payload, conf string) string {
+	if s := strings.TrimSpace(p.TunnelSubnet); s != "" {
+		return s
+	}
+	return tunnelSubnetFromConf(conf)
+}
+
+func tunnelAddressFromPayload(p Payload, conf string) string {
+	if s := strings.TrimSpace(p.TunnelAddress); s != "" {
+		return s
+	}
+	for _, line := range strings.Split(conf, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "Address = ") {
+			continue
+		}
+		addr := strings.TrimSpace(strings.TrimPrefix(line, "Address = "))
+		if addr != "" {
+			return addr
+		}
+		break
+	}
+	return "10.8.0.1/24"
+}
+
+func ensureTunnelIfaceAddress(iface, cidr string) {
+	iface = strings.TrimSpace(iface)
+	cidr = strings.TrimSpace(cidr)
+	if iface == "" || cidr == "" {
+		return
+	}
+	host := cidr
+	if i := strings.Index(cidr, "/"); i > 0 {
+		host = cidr[:i]
+	}
+	if out, err := exec.Command("ip", "-4", "addr", "show", "dev", iface).CombinedOutput(); err == nil {
+		if strings.Contains(string(out), host) {
+			if out2, err2 := exec.Command("ip", "link", "set", iface, "up").CombinedOutput(); err2 != nil {
+				logger.Warningf("amneziawg ip link up %s: %v (%s)", iface, err2, strings.TrimSpace(string(out2)))
+			}
+			return
+		}
+	}
+	if out, err := exec.Command("ip", "addr", "add", cidr, "dev", iface).CombinedOutput(); err != nil {
+		msg := strings.TrimSpace(string(out))
+		if !strings.Contains(msg, "File exists") {
+			logger.Warningf("amneziawg ip addr add %s %s: %v (%s)", iface, cidr, err, msg)
+		}
+	}
+	if out, err := exec.Command("ip", "link", "set", iface, "up").CombinedOutput(); err != nil {
+		logger.Warningf("amneziawg ip link up %s: %v (%s)", iface, err, strings.TrimSpace(string(out)))
+	} else {
+		logger.Infof("amneziawg iface up: %s %s", iface, cidr)
+	}
+}
+
 func tunnelSubnetFromConf(conf string) string {
 	for _, line := range strings.Split(conf, "\n") {
 		line = strings.TrimSpace(line)
@@ -225,14 +283,15 @@ func peerCountFromConf(conf string) int {
 	return n
 }
 
-func applyAwgSetconf(tag, iface, confPath, conf string) bool {
+func applyAwgSetconf(tag string, p Payload, confPath string) bool {
 	awg := findAwgBinary()
 	if awg == "" {
 		logger.Warningf("amneziawg: awg binary not found — sidecar %s setconf skipped", tag)
 		return false
 	}
-	iface = strings.TrimSpace(iface)
+	iface := strings.TrimSpace(p.Iface)
 	confPath = strings.TrimSpace(confPath)
+	conf := p.Conf
 	if iface == "" || confPath == "" {
 		return false
 	}
@@ -246,7 +305,8 @@ func applyAwgSetconf(tag, iface, confPath, conf string) bool {
 			port := listenPortFromConf(conf)
 			peers := peerCountFromConf(conf)
 			logger.Infof("amneziawg setconf OK: tag=%s iface=%s listenPort=%s peers=%d (attempt %d)", tag, iface, port, peers, attempt)
-			ensureTunnelRouting(iface, tunnelSubnetFromConf(conf))
+			ensureTunnelIfaceAddress(iface, tunnelAddressFromPayload(p, conf))
+			ensureTunnelRouting(iface, tunnelSubnetFromPayload(p, conf))
 			if showOut, showErr := exec.Command(awg, "show", iface).CombinedOutput(); showErr == nil {
 				summary := strings.TrimSpace(string(showOut))
 				if len(summary) > 240 {
@@ -351,8 +411,12 @@ func (m *Manager) Apply(payloads []Payload) error {
 			}
 			if err := os.WriteFile(cur.confPath, []byte(conf), 0o600); err != nil {
 				logger.Warningf("amneziawg rewrite conf %s: %v", tag, err)
-			} else if applyAwgSetconf(tag, cur.iface, cur.confPath, conf) {
-				cur.configured = true
+			} else {
+				retry := p
+				retry.Iface = cur.iface
+				if applyAwgSetconf(tag, retry, cur.confPath) {
+					cur.configured = true
+				}
 			}
 			continue
 		}
@@ -393,7 +457,8 @@ func (m *Manager) Apply(payloads []Payload) error {
 			}
 		}(tag, cmd, ctx, done)
 
-		configured := applyAwgSetconf(tag, iface, confPath, conf)
+		p.Iface = iface
+		configured := applyAwgSetconf(tag, p, confPath)
 		logger.Infof("AmneziaWG-go started: tag=%s iface=%s pid=%d configured=%v", tag, iface, cmd.Process.Pid, configured)
 
 		m.running[tag] = &procState{

@@ -8,7 +8,7 @@ ARG BUILDKIT_INLINE_CACHE=1
 ARG TARGETARCH
 
 # Install build dependencies (git/make for AmneziaWG sidecar in DockerInit.sh)
-RUN apk --no-cache add curl unzip build-base git make
+RUN apk --no-cache add curl unzip build-base git make linux-headers libmnl-dev
 
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
@@ -33,7 +33,8 @@ WORKDIR /
 ARG TARGETARCH
 RUN sh /docker-init.sh "${TARGETARCH}" && \
     f=$(ls /build/bin/xray-linux-* 2>/dev/null | head -1) && [ -f "$f" ] && \
-    echo "Xray+geo+telemt in /build/bin:" && ls -la /build/bin/
+    [ -f /build/bin/awg ] && [ -f /build/bin/amneziawg-go ] && \
+    echo "Xray+geo+telemt+awg in /build/bin:" && ls -la /build/bin/
 # Optional overlay: ./scripts/download-telemt.sh produces prebuilt/linux-{amd64,arm64}/telemt
 RUN ARCH="" && case "${TARGETARCH}" in amd64) ARCH=linux-amd64 ;; arm64) ARCH=linux-arm64 ;; esac && \
     PRE="/build/third_party/telemt-sharx/prebuilt/${ARCH}/telemt" && \

@@ -119,6 +119,9 @@ if command -v git >/dev/null 2>&1 && command -v make >/dev/null 2>&1; then
     rm -rf "${AWG_GO_TMP}"
 
     echo "DockerInit: building awg from amneziawg-tools (${AMNEZIAWG_TOOLS_REF})..."
+    if command -v apk >/dev/null 2>&1; then
+        apk add --no-cache linux-headers libmnl-dev >/dev/null 2>&1 || true
+    fi
     AWG_TOOLS_TMP="$(mktemp -d)"
     if git clone --depth 1 --branch "${AMNEZIAWG_TOOLS_REF}" https://github.com/amnezia-vpn/amneziawg-tools.git "${AWG_TOOLS_TMP}" \
         && make -C "${AWG_TOOLS_TMP}/src" wg \
@@ -126,9 +129,14 @@ if command -v git >/dev/null 2>&1 && command -v make >/dev/null 2>&1; then
         && chmod +x build/bin/awg; then
         echo "DockerInit: awg -> build/bin/awg"
     else
-        echo "DockerInit: WARNING — awg build failed (setconf may be skipped)"
+        echo "DockerInit: ERROR — awg build failed (AmneziaWG setconf unavailable)" >&2
+        exit 1
     fi
     rm -rf "${AWG_TOOLS_TMP}"
+    if [ ! -f build/bin/amneziawg-go ]; then
+        echo "DockerInit: ERROR — amneziawg-go missing after build" >&2
+        exit 1
+    fi
 else
     echo "DockerInit: skipping AmneziaWG build (git/make not available)"
 fi

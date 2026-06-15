@@ -28,7 +28,17 @@ if [ -d /opt/sharx-node-embedded/bin ]; then
     if [ -n "$existing" ]; then
       exname=$(basename "$existing")
     fi
+    seed=0
     if [ ! -f "/app/bin/$needname" ] || { [ -n "$exname" ] && [ "$exname" != "$needname" ]; }; then
+      seed=1
+    fi
+    if [ -f /opt/sharx-node-embedded/bin/awg ] && [ ! -f /app/bin/awg ]; then
+      seed=1
+    fi
+    if [ -f /opt/sharx-node-embedded/bin/amneziawg-go ] && [ ! -f /app/bin/amneziawg-go ]; then
+      seed=1
+    fi
+    if [ "$seed" -eq 1 ]; then
       echo "sharx-node: seeding /app/bin from image (need ${needname}, was ${exname:-empty})" >&2
       cp -a /opt/sharx-node-embedded/bin/. /app/bin/
     fi

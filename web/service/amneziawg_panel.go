@@ -28,10 +28,12 @@ func nodePayloadsToAmneziaWg(in []AmneziaWGNodePayload) []amneziawg.Payload {
 	out := make([]amneziawg.Payload, 0, len(in))
 	for _, p := range in {
 		out = append(out, amneziawg.Payload{
-			InboundId: p.InboundId,
-			Tag:       p.Tag,
-			Conf:      p.Conf,
-			Iface:     p.Iface,
+			InboundId:     p.InboundId,
+			Tag:           p.Tag,
+			Conf:          p.Conf,
+			Iface:         p.Iface,
+			TunnelAddress: p.TunnelAddress,
+			TunnelSubnet:  p.TunnelSubnet,
 		})
 	}
 	return out

@@ -182,10 +182,12 @@ func BuildAmneziaWGInboundSettingsJSON(r *AmneziaWGInboundRequest) (string, erro
 
 // AmneziaWGNodePayload is one sidecar instance pushed to workers / applied locally.
 type AmneziaWGNodePayload struct {
-	InboundId int    `json:"inboundId"`
-	Tag       string `json:"tag"`
-	Conf      string `json:"conf"`
-	Iface     string `json:"iface"`
+	InboundId     int    `json:"inboundId"`
+	Tag           string `json:"tag"`
+	Conf          string `json:"conf"`
+	Iface         string `json:"iface"`
+	TunnelAddress string `json:"tunnelAddress,omitempty"`
+	TunnelSubnet  string `json:"tunnelSubnet,omitempty"`
 }
 
 func wireguardSubnetFromServerAddress(addr string) string {
@@ -245,7 +247,87 @@ func amneziaWgIfaceForTag(tag string) string {
 	return s
 }
 
-// BuildAmneziaWGServerConf renders awg-quick server config from merged inbound settings.
+func amneziaWGTunnelFromSettings(st *AmneziaWGInboundSettings) (tunnelAddress, tunnelSubnet string) {
+	tunnelAddress = "10.8.0.1/24"
+	tunnelSubnet = "10.8.0.0/24"
+	if st == nil || len(st.Address) == 0 {
+		return tunnelAddress, tunnelSubnet
+	}
+	addr := strings.TrimSpace(st.Address[0])
+	if addr != "" {
+		tunnelAddress = addr
+		tunnelSubnet = wireguardSubnetFromServerAddress(addr)
+	}
+	return tunnelAddress, tunnelSubnet
+}
+
+func appendAmneziaWGServerPeers(b *strings.Builder, settings map[string]any) {
+	peers, _ := settings["peers"].([]any)
+	for _, p := range peers {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		pk, _ := pm["publicKey"].(string)
+		pk = strings.TrimSpace(pk)
+		if pk == "" {
+			continue
+		}
+		b.WriteString("\n[Peer]\n")
+		b.WriteString("PublicKey = " + pk + "\n")
+		if aip, ok := pm["allowedIPs"].([]any); ok && len(aip) > 0 {
+			parts := make([]string, 0, len(aip))
+			for _, x := range aip {
+				parts = append(parts, fmt.Sprint(x))
+			}
+			b.WriteString("AllowedIPs = " + strings.Join(parts, ", ") + "\n")
+		} else if aip, ok := pm["allowedIPs"].([]string); ok && len(aip) > 0 {
+			b.WriteString("AllowedIPs = " + strings.Join(aip, ", ") + "\n")
+		} else {
+			continue
+		}
+		if psk, _ := pm["preSharedKey"].(string); strings.TrimSpace(psk) != "" {
+			b.WriteString("PresharedKey = " + strings.TrimSpace(psk) + "\n")
+		}
+		if ka := anyToInt(pm["keepAlive"]); ka > 0 {
+			b.WriteString(fmt.Sprintf("PersistentKeepalive = %d\n", ka))
+		}
+	}
+}
+
+// BuildAmneziaWGSetconf renders awg/wg setconf server config (no Address/MTU/PostUp — those are wg-quick only).
+func BuildAmneziaWGSetconf(inbound *model.Inbound, settings map[string]any, listenPort int) (conf, tunnelAddress, tunnelSubnet string, err error) {
+	if settings == nil {
+		return "", "", "", fmt.Errorf("empty settings")
+	}
+	b, _ := json.Marshal(settings)
+	st, err := ParseAmneziaWGInboundSettings(string(b))
+	if err != nil {
+		return "", "", "", err
+	}
+	if listenPort <= 0 && inbound != nil {
+		listenPort = inbound.Port
+	}
+	sk := strings.TrimSpace(st.SecretKey)
+	if sk == "" {
+		return "", "", "", fmt.Errorf("missing secretKey")
+	}
+	if _, err := wireguardPeerPublicKeyFromPrivateB64(sk); err != nil {
+		return "", "", "", err
+	}
+	tunnelAddress, tunnelSubnet = amneziaWGTunnelFromSettings(st)
+	var out strings.Builder
+	out.WriteString("[Interface]\n")
+	out.WriteString("PrivateKey = " + sk + "\n")
+	if listenPort > 0 {
+		out.WriteString(fmt.Sprintf("ListenPort = %d\n", listenPort))
+	}
+	AppendAmneziaWGObfuscationToConf(&out, st.Obfuscation)
+	appendAmneziaWGServerPeers(&out, settings)
+	return strings.TrimSpace(out.String()) + "\n", tunnelAddress, tunnelSubnet, nil
+}
+
+// BuildAmneziaWGServerConf renders wg-quick server config for panel preview (includes Address/MTU/PostUp).
 func BuildAmneziaWGServerConf(inbound *model.Inbound, settings map[string]any, listenPort int) (string, error) {
 	if settings == nil {
 		return "", fmt.Errorf("empty settings")
@@ -262,16 +344,14 @@ func BuildAmneziaWGServerConf(inbound *model.Inbound, settings map[string]any, l
 	if sk == "" {
 		return "", fmt.Errorf("missing secretKey")
 	}
-	serverPub, err := wireguardPeerPublicKeyFromPrivateB64(sk)
-	if err != nil {
+	if _, err := wireguardPeerPublicKeyFromPrivateB64(sk); err != nil {
 		return "", err
 	}
+	tunnelAddress, tunnelSubnet := amneziaWGTunnelFromSettings(st)
 	var out strings.Builder
 	out.WriteString("[Interface]\n")
 	out.WriteString("PrivateKey = " + sk + "\n")
-	if len(st.Address) > 0 {
-		out.WriteString("Address = " + strings.TrimSpace(st.Address[0]) + "\n")
-	}
+	out.WriteString("Address = " + tunnelAddress + "\n")
 	if listenPort > 0 {
 		out.WriteString(fmt.Sprintf("ListenPort = %d\n", listenPort))
 	}
@@ -279,43 +359,8 @@ func BuildAmneziaWGServerConf(inbound *model.Inbound, settings map[string]any, l
 		out.WriteString(fmt.Sprintf("MTU = %d\n", st.MTU))
 	}
 	AppendAmneziaWGObfuscationToConf(&out, st.Obfuscation)
-	subnet := "10.8.0.0/24"
-	if len(st.Address) > 0 {
-		subnet = wireguardSubnetFromServerAddress(st.Address[0])
-	}
-	appendAmneziaWGRoutingHooks(&out, subnet)
-	peers, _ := settings["peers"].([]any)
-	for _, p := range peers {
-		pm, ok := p.(map[string]any)
-		if !ok {
-			continue
-		}
-		pk, _ := pm["publicKey"].(string)
-		pk = strings.TrimSpace(pk)
-		if pk == "" {
-			continue
-		}
-		out.WriteString("\n[Peer]\n")
-		out.WriteString("PublicKey = " + pk + "\n")
-		if aip, ok := pm["allowedIPs"].([]any); ok && len(aip) > 0 {
-			parts := make([]string, 0, len(aip))
-			for _, x := range aip {
-				parts = append(parts, fmt.Sprint(x))
-			}
-			out.WriteString("AllowedIPs = " + strings.Join(parts, ", ") + "\n")
-		} else if aip, ok := pm["allowedIPs"].([]string); ok && len(aip) > 0 {
-			out.WriteString("AllowedIPs = " + strings.Join(aip, ", ") + "\n")
-		} else {
-			continue
-		}
-		if psk, _ := pm["preSharedKey"].(string); strings.TrimSpace(psk) != "" {
-			out.WriteString("PresharedKey = " + strings.TrimSpace(psk) + "\n")
-		}
-		if ka := anyToInt(pm["keepAlive"]); ka > 0 {
-			out.WriteString(fmt.Sprintf("PersistentKeepalive = %d\n", ka))
-		}
-	}
-	_ = serverPub
+	appendAmneziaWGRoutingHooks(&out, tunnelSubnet)
+	appendAmneziaWGServerPeers(&out, settings)
 	return strings.TrimSpace(out.String()) + "\n", nil
 }
 
@@ -346,7 +391,7 @@ func BuildAmneziaWgPayloadsStandalone() ([]AmneziaWGNodePayload, error) {
 		if err := json.Unmarshal([]byte(settingsJSON), &settings); err != nil {
 			return nil, err
 		}
-		conf, err := BuildAmneziaWGServerConf(ib, settings, ib.Port)
+		conf, tunnelAddr, tunnelSubnet, err := BuildAmneziaWGSetconf(ib, settings, ib.Port)
 		if err != nil {
 			return nil, err
 		}
@@ -355,10 +400,12 @@ func BuildAmneziaWgPayloadsStandalone() ([]AmneziaWGNodePayload, error) {
 			continue
 		}
 		out = append(out, AmneziaWGNodePayload{
-			InboundId: ib.Id,
-			Tag:       tag,
-			Conf:      conf,
-			Iface:     amneziaWgIfaceForInbound(ib.Id, tag),
+			InboundId:     ib.Id,
+			Tag:           tag,
+			Conf:          conf,
+			Iface:         amneziaWgIfaceForInbound(ib.Id, tag),
+			TunnelAddress: tunnelAddr,
+			TunnelSubnet:  tunnelSubnet,
 		})
 	}
 	return out, nil
@@ -399,7 +446,7 @@ func BuildAmneziaWgPayloadsForNode(node *model.Node, ibs []*model.Inbound) ([]Am
 				}
 			}
 		}
-		conf, err := BuildAmneziaWGServerConf(ib, settings, port)
+		conf, tunnelAddr, tunnelSubnet, err := BuildAmneziaWGSetconf(ib, settings, port)
 		if err != nil {
 			return nil, err
 		}
@@ -408,10 +455,12 @@ func BuildAmneziaWgPayloadsForNode(node *model.Node, ibs []*model.Inbound) ([]Am
 			continue
 		}
 		out = append(out, AmneziaWGNodePayload{
-			InboundId: ib.Id,
-			Tag:       tag,
-			Conf:      conf,
-			Iface:     amneziaWgIfaceForInbound(ib.Id, tag),
+			InboundId:     ib.Id,
+			Tag:           tag,
+			Conf:          conf,
+			Iface:         amneziaWgIfaceForInbound(ib.Id, tag),
+			TunnelAddress: tunnelAddr,
+			TunnelSubnet:  tunnelSubnet,
 		})
 	}
 	return out, nil

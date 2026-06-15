@@ -29,7 +29,9 @@ RUN apk --no-cache --update add \
   unzip \
   bash \
   git \
-  make
+  make \
+  linux-headers \
+  libmnl-dev
 
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
