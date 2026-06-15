@@ -4,7 +4,7 @@
 
 ## Welcome to SharX
 
-**SharX** is a fork of the original **3XUI** panel with enhanced features and monitoring capabilities.
+**SharX** is a modern multi-node Xray management platform with Docker-first deployment, observability hooks, and a visual subscription page builder.
 
 This version brings a modern, Docker-first architecture, **multi-node** workers, a **visual subscription page builder**, **encrypted cookie web sessions** (`web/web.go`), and **optional observability**: Prometheus text metrics at `{basePath}panel/metrics`, optional Loki / VictoriaMetrics endpoints in panel settings, and a downloadable Grafana dashboard JSON for your own stack.
 
@@ -34,7 +34,7 @@ This version brings a modern, Docker-first architecture, **multi-node** workers,
 
 ### PostgreSQL database
 - **Production datastore**: The panel runtime uses **PostgreSQL** (GORM + SQL migrations in `database/`).
-- **Legacy import**: A built-in **SQLite → PostgreSQL** migration tool is available for importing old 3XUI SQLite dumps (`web/service/migration.go`).
+- **Legacy import**: A built-in **SQLite → PostgreSQL** migration tool is available for importing legacy panel SQLite dumps (`web/service/migration.go`).
 
 ### Observability (optional; not a bundled Grafana stack)
 - **Prometheus scrape**: Metrics are exposed in Prometheus text format at `{basePath}panel/metrics` (`web/web.go`, `web/service/metrics.go`).
@@ -73,14 +73,14 @@ This version brings a modern, Docker-first architecture, **multi-node** workers,
 ### One-Line Install
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/konstpic/3x-ui-new/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/konstpic/SharX/main/install.sh)
 ```
 
 Or clone and run:
 
 ```bash
-git clone https://github.com/konstpic/3x-ui-new.git
-cd 3x-ui-new
+git clone https://github.com/konstpic/SharX.git
+cd SharX
 sudo bash install.sh
 ```
 
@@ -161,8 +161,8 @@ The panel container is recreated with a new image; your **PostgreSQL** data on t
 
 1. **Clone or download this repository**
    ```bash
-   git clone https://github.com/konstpic/3x-ui-new.git
-   cd 3x-ui-new
+   git clone https://github.com/konstpic/SharX.git
+   cd SharX
    ```
 
 2. **Configure Docker Compose**
@@ -534,6 +534,10 @@ For integrating with SharX panel programmatically, see the complete API referenc
 ### Support
 
 For issues, questions, or contributions, please refer to the project repository.
+
+### Donate
+
+Support SharX development: **[donate.konstpic.ru](https://donate.konstpic.ru/)**
 
 ---
 

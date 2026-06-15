@@ -1,7 +1,7 @@
 <div align="center">
 
 <!-- SharX Hero Section -->
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=0,2,3,5,30&height=300&section=header&text=SharX&fontSize=70&fontAlignY=40&animation=fadeIn&fontColor=gradient&desc=3XUI%20Fork%20%7C%20Multi-Node%20%7C%20Subscription%20Builder%20%7C%20Observability&descSize=25&descAlignY=60" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=0,2,3,5,30&height=300&section=header&text=SharX&fontSize=70&fontAlignY=40&animation=fadeIn&fontColor=gradient&desc=Multi-Node%20%7C%20Subscription%20Builder%20%7C%20Observability&descSize=25&descAlignY=60" width="100%"/>
 
 </div>
 
@@ -13,9 +13,9 @@
 
 ## Welcome to SharX / Добро пожаловать в SharX
 
-**SharX** is a fork of the original **3XUI** panel with enhanced features and monitoring capabilities.
+**SharX** is a modern multi-node Xray management platform with Docker-first deployment, observability hooks, and a visual subscription page builder.
 
-**SharX** — это форк оригинальной панели **3XUI** с расширенными возможностями и функциями мониторинга.
+**SharX** — современная multi-node платформа управления Xray с Docker-сборкой, наблюдаемостью и визуальным конструктором страницы подписки.
 
 This version brings a modern, Docker-first architecture, **multi-node** workers, a **visual subscription page builder**, **encrypted cookie-based web sessions**, and **optional observability** hooks (Prometheus text metrics, optional Loki / VictoriaMetrics in settings, Grafana dashboard JSON export).
 
@@ -151,7 +151,7 @@ sudo ./install.sh
 ## Key Features / Основные возможности
 
 - **Multi-node**: One panel controls many worker nodes (REST node API, geography / host overrides)
-- **PostgreSQL**: Primary database with in-repo migrations; optional **SQLite → PostgreSQL** import for legacy 3XUI backups
+- **PostgreSQL**: Primary database with in-repo migrations; optional **SQLite → PostgreSQL** import for legacy panel backups
 - **Encrypted cookie sessions**: Standard stack uses signed/encrypted browser cookies (Gin session store)
 - **Observability (optional)**: `GET {basePath}panel/metrics` (Prometheus text); optional Loki log push and VictoriaMetrics URL in panel settings; downloadable Grafana dashboard JSON for **your** stack (Grafana itself is not bundled by default)
 - **Docker + Watchtower**: Pre-built images; in-stack or manual updates
@@ -163,7 +163,7 @@ sudo ./install.sh
 - **Environment-based config**: Panel, sub, and DB settings via env (see full docs)
 
 - **Multi-node**: одна панель и множество worker-узлов (REST API узла, география / host overrides)
-- **PostgreSQL**: основная БД и миграции в репозитории; опциональный **импорт SQLite → PostgreSQL** со старых бэкапов 3XUI
+- **PostgreSQL**: основная БД и миграции в репозитории; опциональный **импорт SQLite → PostgreSQL** со старых бэкапов панели
 - **Сессии в cookie**: веб-сессии в подписанных/зашифрованных cookie (Gin session store)
 - **Наблюдаемость (опционально)**: `GET {basePath}panel/metrics` (текст Prometheus); опционально Loki и VictoriaMetrics в настройках панели; JSON дашборда для импорта в **ваш** Grafana (сам Grafana по умолчанию не входит в compose)
 - **Docker + Watchtower**: готовые образы; обновления из стека или вручную
@@ -230,22 +230,16 @@ For issues, questions, or contributions, please refer to the project repository.
 
 ## Authors / Авторы
 
-**Project Authors / Авторы проекта:**
-- @konspic
-- @alireza0
-- @MHSanaei
+**Project Author / Автор проекта:**
+- [@konspic](https://github.com/konstpic)
 
 ## Donate / Донаты 💵
 
-**Crypto / Криптовалюта:**
-- [Donate via NowPayments - MHSanaei](https://nowpayments.io/donation/hsanaei)
-- [Donate via NowPayments - Alireza7](https://nowpayments.io/donation/alireza7)
-- [Donate via Tribute - konspic](https://t.me/tribute/app?startapp=dDMW)
+Support SharX development — card, crypto, and other payment methods:
 
-**Fiat (Card, Bank, Cash App Pay, G Pay, Link) / Фиат (Карта, Банк, Cash App Pay, G Pay, Link):**
-- [Buy Me a Coffee - MHSanaei](https://buymeacoffee.com/mhsanaei)
-- [Buy Me a Coffee - Alireza7](https://buymeacoffee.com/alireza7)
-- [Donate via Tribute - konspic](https://t.me/tribute/app?startapp=dDMW)
+Поддержите развитие SharX — карта, криптовалюта и другие способы оплаты:
+
+- **[donate.konstpic.ru](https://donate.konstpic.ru/)**
 
 ---
 

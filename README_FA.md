@@ -4,7 +4,7 @@
 
 ## به SharX خوش آمدید
 
-**شار ایکس (SharX)** یک فورک (انشعاب) از پنل اصلی **3XUI** با قابلیت‌های ارتقا یافته و امکانات نظارتی است.
+**شار ایکس (SharX)** یک پلتفرم مدرن مدیریت چند-نودی Xray با استقرار Docker-first، قابلیت‌های نظارتی و سازنده بصری صفحه اشتراک است.
 
 این نسخه معماری مدرن مبتنی بر داکر، workerهای **چند-نودی**، **سازندهٔ بصری صفحهٔ سابسکریپشن**، **نشست‌های وب در کوکی رمزنگاری‌شده** (`web/web.go`) و **پایشِ اختیاری** را ارائه می‌کند: متریک‌های Prometheus در `{basePath}panel/metrics`، در صورت نیاز Loki/VictoriaMetrics در تنظیمات پانل، و فایل JSON داشبورد Grafana برای **پشتهٔ خودتان**.
 
@@ -39,7 +39,7 @@
 ### پایگاه داده PostgreSQL
 
 * **ذخیره‌سازی اصلی**: زمان اجرای پانل روی **PostgreSQL** است (GORM + مهاجرت‌های SQL در `database/`).
-* **ورودی قدیمی**: ابزار داخلی **SQLite → PostgreSQL** برای دامپ‌های قدیمی 3XUI (`web/service/migration.go`).
+* **ورودی قدیمی**: ابزار داخلی **SQLite → PostgreSQL** برای دامپ‌های قدیمی پنل (`web/service/migration.go`).
 
 ### پایش (اختیاری؛ استک آمادهٔ Grafana نیست)
 
@@ -82,14 +82,14 @@
 ### نصب با یک خط دستور
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/konstpic/3x-ui-new/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/konstpic/SharX/main/install.sh)
 ```
 
 یا کلون کنید و اجرا نمایید:
 
 ```bash
-git clone https://github.com/konstpic/3x-ui-new.git
-cd 3x-ui-new
+git clone https://github.com/konstpic/SharX.git
+cd SharX
 sudo bash install.sh
 ```
 
@@ -173,8 +173,8 @@ sudo bash install.sh
 
 1. **کلون یا دانلود این مخزن**
 ```bash
-git clone https://github.com/konstpic/3x-ui-new.git
-cd 3x-ui-new
+git clone https://github.com/konstpic/SharX.git
+cd SharX
 ```
 
 
