@@ -143,6 +143,8 @@ function buildNodeDockerComposeYaml(secretKey: string, panelUrl: string) {
     labels:
       com.centurylinklabs.watchtower.enable: "true"
     cap_add: [NET_ADMIN]
+    devices:
+      - /dev/net/tun:/dev/net/tun
     network_mode: host
     volumes:
       - sharx-node-logs:/app/logs

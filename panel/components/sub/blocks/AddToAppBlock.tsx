@@ -11,7 +11,7 @@ import {
 import {
   amneziaVpnKeyDisplayLabel,
   firstAmneziaVpnImportLink,
-  listAmneziaVpnImportLinks,
+  listAmneziaVpnImportItems,
 } from "@/lib/amneziaVpnImportLink";
 import { resolveMtProtoLinks, tgProxyDisplayLabel } from "../types";
 import shell from "../subscription-shell.module.css";
@@ -103,7 +103,9 @@ function renderButtons(
   }
 
   if (button.app === "amneziavpn") {
-    const keys = listAmneziaVpnImportLinks(subLinks);
+    const keys = listAmneziaVpnImportItems(subLinks)
+      .filter((item): item is Extract<typeof item, { kind: "link" }> => item.kind === "link")
+      .map((item) => item.link);
     if (keys.length === 0) return [];
     return keys.map((href, i) => ({
       id: keys.length > 1 ? `${button.id}-${i}` : button.id,

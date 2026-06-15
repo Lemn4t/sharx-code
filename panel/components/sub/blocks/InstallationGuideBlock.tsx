@@ -17,10 +17,12 @@ import {
   type SubscriptionApp,
   type SupportedPlatform,
 } from "@/lib/sharxSubpageConfig";
-import { firstWireGuardConfFromLinks } from "@/lib/wireguardConf";
+import { firstWireGuardConfFromLinks, listWireGuardConfsFromLinks } from "@/lib/wireguardConf";
+import { downloadTextFile } from "@/lib/downloadTextFile";
 import {
   amneziaVpnKeyDisplayLabel,
-  listAmneziaVpnImportLinks,
+  listAmneziaVpnImportItems,
+  type AmneziaVpnImportItem,
 } from "@/lib/amneziaVpnImportLink";
 import { resolveMtProtoLinks, tgProxyDisplayLabel } from "../types";
 import { PlatformBrandIcon } from "../PlatformBrandIcon";
@@ -143,7 +145,7 @@ function defaultAmneziaVpnSteps(
       title: t("pages.publicSub.stepAmneziaVpn.import.title", { defaultValue: "Import connection key" }),
       text: t("pages.publicSub.stepAmneziaVpn.import.text", {
         defaultValue:
-          "In AmneziaVPN tap + → for each server import one connection key below (paste, scan QR, or save as a file). AmneziaVPN has no subscription URL — add keys one by one. For AmneziaWG tunnels use the AmneziaWG card and .conf instead.",
+          "In AmneziaVPN tap + → for each server import one connection key or .conf file below (paste, scan QR, or download). AmneziaVPN has no subscription URL — add servers one by one.",
       }),
     },
     {
@@ -169,7 +171,7 @@ function defaultAmneziaWgSteps(
       title: t("pages.publicSub.stepAmneziaWg.import.title", { defaultValue: "Import configuration" }),
       text: t("pages.publicSub.stepAmneziaWg.import.text", {
         defaultValue:
-          "Open AmneziaWG → scan the QR code below, or copy the WireGuard .conf from the keys section and import the file.",
+          "Open AmneziaWG → scan the QR code below, or download the WireGuard .conf file and import it in the app.",
       }),
     },
     {
@@ -294,6 +296,8 @@ function resolveStepActions(
     forceShowPrimaryDeeplink?: boolean;
     /** URL for step-2 copy fallback; for telegram prefer first tg:// line instead of HTTP /sub/ URL. */
     step1CopyUrl?: string;
+    /** When set, step 2 shows «Download .conf» instead of copy. */
+    step1DownloadConf?: { content: string; fileName: string };
   },
 ): (StepAction | null)[] {
   return steps.map((_s: InstallationStep, i: number) => {
@@ -319,14 +323,30 @@ function resolveStepActions(
         badge: opts.isEncrypted ? "E2E" : undefined,
       };
     }
-    if (i === 1) {
-      const copyUrl = opts.step1CopyUrl ?? opts.subscriptionUrl;
+    if (i === 1 && opts.step1DownloadConf) {
+      const { content, fileName } = opts.step1DownloadConf;
+      return {
+        label: opts.t("pages.publicSub.downloadWireGuardConf", { defaultValue: "Download .conf" }),
+        onClick: () => downloadTextFile(content, fileName),
+        icon: <Download className="size-3.5" />,
+        primary: true,
+      };
+    }
+    if (i === 1 && opts.step1CopyUrl) {
+      const copyUrl = opts.step1CopyUrl;
       const isTg = copyUrl.trim().toLowerCase().startsWith("tg://");
       return {
         label: isTg
           ? opts.t("pages.publicSub.copyProxyLink", { defaultValue: "Copy proxy link" })
           : opts.t("pages.publicSub.copySubscription", { defaultValue: "Copy link" }),
         onClick: () => opts.onCopyLink(copyUrl),
+        icon: <Copy className="size-3.5" />,
+      };
+    }
+    if (i === 1 && opts.subscriptionUrl) {
+      return {
+        label: opts.t("pages.publicSub.copySubscription", { defaultValue: "Copy link" }),
+        onClick: () => opts.onCopyLink(opts.subscriptionUrl),
         icon: <Copy className="size-3.5" />,
       };
     }
@@ -376,15 +396,15 @@ function ActionButton({
   );
 }
 
-function AmneziaVpnKeyList({
-  keys,
+function AmneziaVpnImportList({
+  items,
   showQrCodes,
   interactive,
   onCopyLink,
   onShowQr,
   t,
 }: {
-  keys: string[];
+  items: AmneziaVpnImportItem[];
   showQrCodes: boolean;
   interactive: boolean;
   onCopyLink: (url: string) => void;
@@ -393,42 +413,69 @@ function AmneziaVpnKeyList({
 }) {
   return (
     <div className="space-y-2">
-      {keys.map((link, i) => {
-        const label = amneziaVpnKeyDisplayLabel(link, i);
+      {items.map((item, i) => {
+        const label =
+          item.kind === "link"
+            ? amneziaVpnKeyDisplayLabel(item.link, i)
+            : item.label;
         return (
           <div
-            key={`${link}-${i}`}
+            key={`${item.kind}-${i}-${label}`}
             className="rounded-lg border border-[var(--sub-border,rgba(255,255,255,0.08))] bg-[var(--sub-surface,rgba(255,255,255,0.04))] p-3"
           >
             <div className="mb-2 text-[12px] font-medium text-[var(--sub-fg-strong,#fff)]">
               {label}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <ActionButton
-                interactive={interactive}
-                action={{
-                  label: t("pages.publicSub.amneziaVpn.importKey", { defaultValue: "Import key" }),
-                  href: link,
-                  icon: <Zap className="size-3.5" />,
-                  primary: true,
-                }}
-              />
-              <ActionButton
-                interactive={interactive}
-                action={{
-                  label: t("pages.publicSub.copyKey", { defaultValue: "Copy key" }),
-                  onClick: () => onCopyLink(link),
-                  icon: <Copy className="size-3.5" />,
-                }}
-              />
-              {showQrCodes ? (
-                <QrIconButton
-                  qrUrl={link}
-                  qrLabel={label}
-                  interactive={interactive}
-                  onShowQr={onShowQr}
-                />
-              ) : null}
+              {item.kind === "link" ? (
+                <>
+                  <ActionButton
+                    interactive={interactive}
+                    action={{
+                      label: t("pages.publicSub.amneziaVpn.importKey", { defaultValue: "Import key" }),
+                      href: item.link,
+                      icon: <Zap className="size-3.5" />,
+                      primary: true,
+                    }}
+                  />
+                  <ActionButton
+                    interactive={interactive}
+                    action={{
+                      label: t("pages.publicSub.copyKey", { defaultValue: "Copy key" }),
+                      onClick: () => onCopyLink(item.link),
+                      icon: <Copy className="size-3.5" />,
+                    }}
+                  />
+                  {showQrCodes ? (
+                    <QrIconButton
+                      qrUrl={item.link}
+                      qrLabel={label}
+                      interactive={interactive}
+                      onShowQr={onShowQr}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <ActionButton
+                    interactive={interactive}
+                    action={{
+                      label: t("pages.publicSub.downloadWireGuardConf", { defaultValue: "Download .conf" }),
+                      onClick: () => downloadTextFile(item.conf, item.fileName),
+                      icon: <Download className="size-3.5" />,
+                      primary: true,
+                    }}
+                  />
+                  <ActionButton
+                    interactive={interactive}
+                    action={{
+                      label: t("pages.publicSub.copyConf", { defaultValue: "Copy .conf" }),
+                      onClick: () => onCopyLink(item.conf),
+                      icon: <Copy className="size-3.5" />,
+                    }}
+                  />
+                </>
+              )}
             </div>
           </div>
         );
@@ -649,11 +696,12 @@ function SelectedAppDetail(props: DetailProps) {
   const isAmneziaWg = entry.app === "amneziawg";
   const isAmneziaVpn = entry.app === "amneziavpn";
   const isSingBox = entry.app === "sing-box";
-  const amneziaVpnKeys = listAmneziaVpnImportLinks(links);
-  const firstLink = amneziaVpnKeys[0] ?? "";
+  const amneziaVpnItems = listAmneziaVpnImportItems(links);
+  const firstLinkItem = amneziaVpnItems.find((item) => item.kind === "link");
+  const firstLink = firstLinkItem?.kind === "link" ? firstLinkItem.link : "";
 
   const isTelegramMulti = entry.app === "telegram" && tgProxyLinks.length > 1;
-  const isAmneziaVpnMulti = isAmneziaVpn && amneziaVpnKeys.length > 1;
+  const isAmneziaVpnMulti = isAmneziaVpn && amneziaVpnItems.length > 1;
   const urlForTemplate = subscriptionUrlForApp(entry.app, subscriptionUrl, subscriptionJsonUrl);
   const templateVars: TemplateVars = {
     url: urlForTemplate,
@@ -689,7 +737,7 @@ function SelectedAppDetail(props: DetailProps) {
         : addHref || urlForTemplate || subscriptionUrl;
   const hasDownload = !!entry.downloadUrl?.trim();
   const effectiveShowDeeplinks =
-    showDeeplinks && !isAmneziaWg && !(isAmneziaVpn && amneziaVpnKeys.length > 0);
+    showDeeplinks && !isAmneziaWg && !(isAmneziaVpn && amneziaVpnItems.length > 0);
   const steps =
     entry.steps && entry.steps.length > 0
       ? entry.steps
@@ -718,15 +766,20 @@ function SelectedAppDetail(props: DetailProps) {
           : undefined,
     forceShowPrimaryDeeplink:
       (entry.app === "telegram" && !!addHref && !isTelegramMulti) ||
-      (isAmneziaVpn && !!addHref && !isAmneziaVpnMulti),
+      (isAmneziaVpn && !!addHref && amneziaVpnItems.length === 1 && firstLink !== ""),
     step1CopyUrl:
       entry.app === "telegram" && !isTelegramMulti && tgProxyLinks.length > 0
         ? tgProxyLinks[0]
-        : isAmneziaWg && wireguardConf
-          ? wireguardConf
-          : isAmneziaVpn && !isAmneziaVpnMulti && firstLink
-            ? firstLink
-            : undefined,
+        : isAmneziaVpn && amneziaVpnItems.length === 1 && firstLink
+          ? firstLink
+          : undefined,
+    step1DownloadConf:
+      isAmneziaWg && wireguardConf
+        ? {
+            content: wireguardConf,
+            fileName: listWireGuardConfsFromLinks(links)[0]?.fileName ?? "amnezia.conf",
+          }
+        : undefined,
   });
 
   const stepExtras =
@@ -743,11 +796,11 @@ function SelectedAppDetail(props: DetailProps) {
             />
           ),
         }
-      : isAmneziaVpn && amneziaVpnKeys.length > 0
+      : isAmneziaVpn && amneziaVpnItems.length > 0
         ? {
             1: (
-              <AmneziaVpnKeyList
-                keys={amneziaVpnKeys}
+              <AmneziaVpnImportList
+                items={amneziaVpnItems}
                 showQrCodes={showQrCodes}
                 interactive={interactive}
                 onCopyLink={onCopyLink}

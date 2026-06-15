@@ -70,6 +70,54 @@ export function firstWireGuardConfFromLinks(links: string[]): string | null {
   return reconstructWireGuardConfFromLinks(links);
 }
 
+function sanitizeConfFileStem(label: string): string {
+  const stem = label
+    .trim()
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+  return stem || "amnezia";
+}
+
+/** Human label from panel WireGuard / AmneziaWG subscription text. */
+export function wireGuardConfLabelFromPanelText(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const header = trimmed.match(/^(?:WireGuard|AmneziaWG)\s*\(UDP\)\s*(?:—|-)\s*(.+?)(?:\n|$)/i);
+  if (header?.[1]?.trim()) return header[1].trim();
+  const endpoint = trimmed.match(/^Endpoint:\s*(.+?)(?:\n|$)/im);
+  if (endpoint?.[1]?.trim()) return endpoint[1].trim();
+  if (/^AmneziaWG/i.test(trimmed)) return "AmneziaWG";
+  if (/^WireGuard/i.test(trimmed)) return "WireGuard";
+  return null;
+}
+
+export type WireGuardConfEntry = {
+  conf: string;
+  label: string;
+  fileName: string;
+};
+
+/** All distinct wg-quick blocks in subscription order (one per inbound link entry). */
+export function listWireGuardConfsFromLinks(links: string[]): WireGuardConfEntry[] {
+  const seen = new Set<string>();
+  const out: WireGuardConfEntry[] = [];
+  let confIndex = 0;
+  for (const raw of links) {
+    const conf = wgQuickConfFromPanelText(raw);
+    if (!conf || seen.has(conf)) continue;
+    seen.add(conf);
+    const fromText = wireGuardConfLabelFromPanelText(raw);
+    const label = fromText ?? `WireGuard ${++confIndex}`;
+    out.push({
+      conf,
+      label,
+      fileName: `${sanitizeConfFileStem(label)}.conf`,
+    });
+  }
+  return out;
+}
+
 /** Panel WireGuard info lines that are not the wg-quick conf block itself. */
 function isWireGuardPanelMetadataLine(line: string): boolean {
   const t = line.trim();
