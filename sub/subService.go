@@ -913,13 +913,20 @@ func (s *SubService) getAddressesForInbound(inbound *model.Inbound) ([]AddressPo
 		subHost = host
 		mode := model.NormalizeHostSubscriptionApplyMode(host.SubscriptionApplyMode)
 		hp := hostAddressPort(host)
+		// AmneziaWG / WireGuard listen on the worker as UDP sidecars — Host "replace" must not
+		// hide node published addresses (unlike TCP/TLS front domains that proxy to nodes).
+		udpOnWorker := inbound != nil && (model.NormalizeProtocol(inbound.Protocol) == model.AmneziaWG || model.NormalizeProtocol(inbound.Protocol) == model.WireGuard)
 		switch mode {
 		case model.HostSubscriptionApplyPrepend:
 			nodeAddrs = append([]AddressPort{hp}, nodeAddrs...)
 		case model.HostSubscriptionApplyAppend:
 			nodeAddrs = append(nodeAddrs, hp)
 		default:
-			nodeAddrs = []AddressPort{hp}
+			if udpOnWorker && len(nodeAddrs) > 0 {
+				// keep worker node address(es) for UDP tunnel endpoint
+			} else {
+				nodeAddrs = []AddressPort{hp}
+			}
 		}
 	}
 

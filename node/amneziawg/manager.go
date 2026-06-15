@@ -26,7 +26,11 @@ import (
 	"github.com/konstpic/sharx-code/v2/logger"
 )
 
-const sidecarStopTimeout = 8 * time.Second
+const (
+	sidecarStopTimeout = 8 * time.Second
+	setconfRetryAttempts = 15
+	setconfRetryInterval = 200 * time.Millisecond
+)
 
 // Payload is one inbound's awg-quick config and interface name.
 type Payload struct {
@@ -62,11 +66,13 @@ func (m *Manager) RunningCount() int {
 }
 
 type procState struct {
-	cancel context.CancelFunc
-	hash   string
-	cmd    *exec.Cmd
-	iface  string
-	done   chan struct{}
+	cancel     context.CancelFunc
+	hash       string
+	cmd        *exec.Cmd
+	iface      string
+	done       chan struct{}
+	configured bool
+	confPath   string
 }
 
 // NewManager creates an AmneziaWG sidecar manager.
@@ -199,6 +205,67 @@ func ensureTunnelRouting(iface, subnet string) {
 	logger.Infof("amneziawg routing OK: iface=%s subnet=%s", iface, subnet)
 }
 
+func listenPortFromConf(conf string) string {
+	for _, line := range strings.Split(conf, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "ListenPort = ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "ListenPort = "))
+		}
+	}
+	return ""
+}
+
+func peerCountFromConf(conf string) int {
+	n := 0
+	for _, line := range strings.Split(conf, "\n") {
+		if strings.TrimSpace(line) == "[Peer]" {
+			n++
+		}
+	}
+	return n
+}
+
+func applyAwgSetconf(tag, iface, confPath, conf string) bool {
+	awg := findAwgBinary()
+	if awg == "" {
+		logger.Warningf("amneziawg: awg binary not found — sidecar %s setconf skipped", tag)
+		return false
+	}
+	iface = strings.TrimSpace(iface)
+	confPath = strings.TrimSpace(confPath)
+	if iface == "" || confPath == "" {
+		return false
+	}
+	var lastOut string
+	var lastErr error
+	for attempt := 1; attempt <= setconfRetryAttempts; attempt++ {
+		out, err := exec.Command(awg, "setconf", iface, confPath).CombinedOutput()
+		lastOut = strings.TrimSpace(string(out))
+		lastErr = err
+		if err == nil {
+			port := listenPortFromConf(conf)
+			peers := peerCountFromConf(conf)
+			logger.Infof("amneziawg setconf OK: tag=%s iface=%s listenPort=%s peers=%d (attempt %d)", tag, iface, port, peers, attempt)
+			ensureTunnelRouting(iface, tunnelSubnetFromConf(conf))
+			if showOut, showErr := exec.Command(awg, "show", iface).CombinedOutput(); showErr == nil {
+				summary := strings.TrimSpace(string(showOut))
+				if len(summary) > 240 {
+					summary = summary[:240] + "…"
+				}
+				if summary != "" {
+					logger.Infof("amneziawg show %s: %s", iface, summary)
+				}
+			}
+			return true
+		}
+		if attempt < setconfRetryAttempts {
+			time.Sleep(setconfRetryInterval)
+		}
+	}
+	logger.Warningf("amneziawg setconf FAILED tag=%s iface=%s after %d attempts: %v (%s)", tag, iface, setconfRetryAttempts, lastErr, lastOut)
+	return false
+}
+
 func (m *Manager) stopProc(st *procState) {
 	if st == nil {
 		return
@@ -279,6 +346,14 @@ func (m *Manager) Apply(payloads []Payload) error {
 		}
 
 		if cur, ok := m.running[tag]; ok && cur != nil && cur.hash == hhex {
+			if cur.configured {
+				continue
+			}
+			if err := os.WriteFile(cur.confPath, []byte(conf), 0o600); err != nil {
+				logger.Warningf("amneziawg rewrite conf %s: %v", tag, err)
+			} else if applyAwgSetconf(tag, cur.iface, cur.confPath, conf) {
+				cur.configured = true
+			}
 			continue
 		}
 		if cur, ok := m.running[tag]; ok {
@@ -318,25 +393,13 @@ func (m *Manager) Apply(payloads []Payload) error {
 			}
 		}(tag, cmd, ctx, done)
 
-		// UAPI socket must exist before awg setconf.
-		if awg := findAwgBinary(); awg != "" && conf != "" {
-			out, err := exec.Command(awg, "setconf", iface, confPath).CombinedOutput()
-			if err != nil {
-				logger.Warningf("amneziawg setconf %s iface=%s: %v (%s)", tag, iface, err, strings.TrimSpace(string(out)))
-			} else {
-				logger.Infof("amneziawg setconf OK: tag=%s iface=%s", tag, iface)
-				ensureTunnelRouting(iface, tunnelSubnetFromConf(conf))
-				if showOut, showErr := exec.Command(awg, "show", iface).CombinedOutput(); showErr == nil {
-					lines := strings.Count(strings.TrimSpace(string(showOut)), "\n") + 1
-					logger.Infof("amneziawg show %s: %d line(s)", iface, lines)
-				}
-			}
-		} else if awg == "" {
-			logger.Warningf("amneziawg: awg binary not found — sidecar %s started but setconf skipped", tag)
-		}
-		logger.Infof("AmneziaWG-go started: tag=%s iface=%s pid=%d", tag, iface, cmd.Process.Pid)
+		configured := applyAwgSetconf(tag, iface, confPath, conf)
+		logger.Infof("AmneziaWG-go started: tag=%s iface=%s pid=%d configured=%v", tag, iface, cmd.Process.Pid, configured)
 
-		m.running[tag] = &procState{cancel: cancel, hash: hhex, cmd: cmd, iface: iface, done: done}
+		m.running[tag] = &procState{
+			cancel: cancel, hash: hhex, cmd: cmd, iface: iface, done: done,
+			configured: configured, confPath: confPath,
+		}
 	}
 	m.commitReplaySnapshot(payloads)
 	return nil
