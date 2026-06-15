@@ -46,6 +46,7 @@ import {
   speedMbpsFormat,
 } from "@/lib/format";
 import { panel } from "@/lib/paths";
+import { extractWireGuardConfBlock } from "@/lib/wireguardConf";
 import { getUiPref, setUiPref } from "@/lib/uiPrefs";
 import { CompareModeFilterField, type CompareOp } from "@/components/CompareModeFilterField";
 import { PageScaffold, PageHeader, SectionHelpModal, Surface } from "@/components/panel";
@@ -4489,9 +4490,10 @@ export function ClientsPage() {
           <div className="max-h-[60vh] space-y-4 overflow-y-auto text-sm">
             {keysRows.map((row) => {
               // For WireGuard, QR codes must contain only the [Interface]/[Peer] conf block.
-              const wgConfText = row.protocol === "wireguard" && row.link.includes("[Interface]")
-                ? row.link.slice(row.link.indexOf("[Interface]"))
-                : null;
+              const wgConfText =
+                row.protocol === "wireguard"
+                  ? extractWireGuardConfBlock(row.link)
+                  : null;
               const qrText = wgConfText ?? row.link;
               const keyQrTooLong = qrText.length > 2500;
               return (
@@ -4544,9 +4546,8 @@ export function ClientsPage() {
                       variant="secondary"
                       className="!h-8 !text-xs"
                       onClick={() => {
-                        const conf = row.link.includes("[Interface]")
-                          ? row.link.slice(row.link.indexOf("[Interface]"))
-                          : row.link;
+                        const conf =
+                          extractWireGuardConfBlock(row.link) ?? row.link;
                         const blob = new Blob([conf], { type: "text/plain;charset=utf-8" });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement("a");

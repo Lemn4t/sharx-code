@@ -182,7 +182,7 @@ func (s *SubService) buildWireguardPanelInfo(inbound *model.Inbound, clientEmail
 		b.WriteString("\n")
 	}
 	if dns := wireguardClientDNSFromSettings(settings); len(dns) > 0 {
-		b.WriteString("Client DNS (for [Interface]): " + strings.Join(dns, ", ") + "\n")
+		b.WriteString("Client DNS: " + strings.Join(dns, ", ") + "\n")
 	}
 
 	secret, _ := settings["secretKey"].(string)
@@ -273,4 +273,17 @@ func (s *SubService) buildWireguardPanelInfo(inbound *model.Inbound, clientEmail
 		b.WriteString("AllowedIPs = 0.0.0.0/0, ::/0\n")
 	}
 	return strings.TrimSpace(b.String()) + "\n"
+}
+
+// wireguardConfBlockFromPanelInfo extracts the wg-quick [Interface]/[Peer] section from panel info text.
+// Ignores descriptive lines that mention [Interface] mid-line (e.g. old "Client DNS (for [Interface]):" hints).
+func wireguardConfBlockFromPanelInfo(text string) string {
+	const header = "\n[Interface]\n"
+	if i := strings.Index(text, header); i >= 0 {
+		return strings.TrimSpace(text[i+1:])
+	}
+	if strings.HasPrefix(text, "[Interface]\n") {
+		return strings.TrimSpace(text)
+	}
+	return ""
 }

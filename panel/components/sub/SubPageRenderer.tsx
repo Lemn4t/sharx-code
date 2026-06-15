@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { Button, Modal, useToast } from "@/components/ui";
 import { supported } from "@/lib/i18n";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
+import { extractWireGuardConfBlock } from "@/lib/wireguardConf";
 import { isSharxV2Config, isSharxV1Config } from "@/lib/sharxSubpageConfig";
 import type {
   SharxSubpageConfigV1,
@@ -208,9 +209,7 @@ export function SubPageRenderer({
                 onCopyLink: (url) => void copyText(url, "link"),
                 onShowQr: (url, title) => {
                   // For WireGuard panel-info blocks, encode only [Interface]/[Peer] conf.
-                  const qrUrl = url.includes("[Interface]")
-                    ? url.slice(url.indexOf("[Interface]"))
-                    : url;
+                  const qrUrl = extractWireGuardConfBlock(url) ?? url;
                   setQrModal({ url: qrUrl, title });
                 },
                 interactive,
