@@ -63,7 +63,7 @@ esac
 echo "DockerInit: downloading Xray for ${RESOLVED} (zip ARCH=${ARCH}, output xray-linux-${FNAME})"
 mkdir -p build/bin
 cd build/bin
-curl -sfLRO "https://github.com/XTLS/Xray-core/releases/download/v26.5.3/Xray-linux-${ARCH}.zip"
+curl -sfLRO "https://github.com/XTLS/Xray-core/releases/download/v26.6.1/Xray-linux-${ARCH}.zip"
 unzip "Xray-linux-${ARCH}.zip"
 rm -f "Xray-linux-${ARCH}.zip" geoip.dat geosite.dat
 mv xray "xray-linux-${FNAME}"
@@ -84,7 +84,7 @@ echo "DockerInit: done."
 cd ../../
 
 # Telemt (MTProto) binary for panel standalone and shared layout with node builds.
-TELEMT_VERSION="${TELEMT_VERSION:-3.4.12}"
+TELEMT_VERSION="${TELEMT_VERSION:-3.4.18}"
 case "$FNAME" in
     amd64) TELEMT_ARCH_DL="x86_64-linux-musl" ;;
     arm64) TELEMT_ARCH_DL="aarch64-linux-musl" ;;

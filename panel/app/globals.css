@@ -53,6 +53,18 @@
   --accent-ambient: #9775fa;
   --section-gap: 2rem;
 
+  /* Top navbar / login header chrome (dark themes) */
+  --panel-chrome-fg: rgba(255, 255, 255, 0.92);
+  --panel-chrome-fg-muted: rgba(255, 255, 255, 0.55);
+  --panel-chrome-fg-subtle: rgba(255, 255, 255, 0.4);
+  --panel-chrome-fg-strong: rgba(255, 255, 255, 0.8);
+  --panel-chrome-icon: rgba(255, 255, 255, 0.8);
+  --panel-chrome-hover-bg: rgba(255, 255, 255, 0.1);
+  --panel-chrome-star: rgba(253, 230, 138, 0.85);
+  --panel-chrome-star-hover: #fde68a;
+  --panel-chrome-donate: rgba(253, 164, 175, 0.85);
+  --panel-chrome-donate-hover: #fda4af;
+
   /* Motion tokens (durations + easings) */
   --motion-fast: 150ms;
   --motion-base: 220ms;
@@ -221,6 +233,17 @@
   --accent-ambient: #ff375f;
   --glass-blur: 24px;
   --glass-saturate: 165%;
+
+  --panel-chrome-fg: #1c1c1e;
+  --panel-chrome-fg-muted: #48484a;
+  --panel-chrome-fg-subtle: #636366;
+  --panel-chrome-fg-strong: #1c1c1e;
+  --panel-chrome-icon: #48484a;
+  --panel-chrome-hover-bg: rgba(0, 0, 0, 0.06);
+  --panel-chrome-star: #b45309;
+  --panel-chrome-star-hover: #92400e;
+  --panel-chrome-donate: #be123c;
+  --panel-chrome-donate-hover: #9f1239;
 }
 
 /* Vision — frosted glass / visionOS-inspired mesh (multi-color ambient, readable text) */
@@ -812,6 +835,36 @@ h6 {
   background: color-mix(in oklab, var(--bg) 95%, transparent) !important;
   border-bottom: 1px solid color-mix(in oklab, var(--accent) 15%, transparent) !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+:root[data-theme="light"] .panel-navbar {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+}
+
+.panel-update-badge {
+  border-radius: 9999px;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: rgba(245, 158, 11, 0.2);
+  font-weight: 600;
+  color: rgba(254, 243, 199, 0.95);
+}
+
+.panel-update-badge--login {
+  padding: 0.125rem 0.5rem;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.panel-update-badge--panel {
+  padding: 0.125rem 0.625rem;
+  font-size: 11px;
+}
+
+:root[data-theme="light"] .panel-update-badge {
+  border-color: rgba(217, 119, 6, 0.45);
+  background: rgba(251, 191, 36, 0.22);
+  color: #92400e;
 }
 
 .panel-navbar::before {

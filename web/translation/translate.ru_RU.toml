@@ -1140,6 +1140,7 @@ remarkModelDragHint = "Перетащите, чтобы упорядочить"
   web = "SharX Web"
   xuiClassic = "SharX Classic"
   starWars = "Star Wars"
+  vision = "Жидкое стекло"
 
 [pages.xray]
 title = "Настройки Xray"
@@ -2530,11 +2531,11 @@ addBlock = "Добавить блок"
   mtProtoToggleHint = "Если в подписке есть ссылки Telegram MTProto (Telemt), показывать подсказку рядом с гидом по установке: открыть tg://, QR и копирование — как у ключей подключения."
   mtProtoToggleLabel = "Показывать блок MTProto"
 
-  [subBuilder.responseRules.extraHeaderDelivery]
-  header = "HTTP-заголовок"
-  body = "Комментарий в теле"
-  both = "Заголовок + тело"
-  none = "Отключено"
+    [subBuilder.responseRules.extraHeaderDelivery]
+    header = "HTTP-заголовок"
+    body = "Комментарий в теле"
+    both = "Заголовок + тело"
+    none = "Отключено"
 
 [subBuilder.appSettings.groups]
 encryption = "Шифрование"

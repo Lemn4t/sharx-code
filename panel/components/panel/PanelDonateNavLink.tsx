@@ -13,7 +13,7 @@ export function PanelDonateNavLink() {
       href={SHARX_DONATE_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex shrink-0 items-center justify-center rounded-lg p-2 text-rose-300/80 transition-colors hover:bg-[rgba(244,114,182,0.12)] hover:text-rose-300"
+      className="inline-flex shrink-0 items-center justify-center rounded-lg p-2 text-[var(--panel-chrome-donate)] transition-colors hover:bg-[rgba(244,114,182,0.12)] hover:text-[var(--panel-chrome-donate-hover)]"
       aria-label={label}
       title={label}
     >

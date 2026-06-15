@@ -90,7 +90,7 @@ export function PanelGitHubStarLink() {
       href={SHARX_GITHUB_REPO_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-amber-200/80 transition-colors hover:bg-[rgba(250,204,21,0.10)] hover:text-amber-200"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-[var(--panel-chrome-star)] transition-colors hover:bg-[rgba(250,204,21,0.10)] hover:text-[var(--panel-chrome-star-hover)]"
       aria-label={label}
       title={label}
     >

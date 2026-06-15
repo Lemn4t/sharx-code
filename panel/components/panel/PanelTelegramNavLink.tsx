@@ -12,7 +12,7 @@ export function PanelTelegramNavLink() {
       href={SHARX_TELEGRAM_GROUP_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex shrink-0 items-center justify-center rounded-lg p-2 text-white/80 transition-colors hover:bg-[rgba(34,211,238,0.08)] hover:text-[var(--ifm-color-primary)]"
+      className="inline-flex shrink-0 items-center justify-center rounded-lg p-2 text-[var(--panel-chrome-icon)] transition-colors hover:bg-[rgba(34,211,238,0.08)] hover:text-[var(--ifm-color-primary)]"
       aria-label={t("menu.telegramGroup")}
       title={t("menu.telegramGroup")}
     >

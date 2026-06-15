@@ -956,6 +956,7 @@ boreal = "Boreal"
 web = "SharX Web"
 xuiClassic = "SharX Classic"
 starWars = "Star Wars"
+vision = "Vision"
 
 [pages.settings.subscriptionHeaders]
 title = "Subscription Headers"

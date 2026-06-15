@@ -249,7 +249,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <button
               type="button"
-              className="rounded-lg p-2 text-white/80 transition-colors hover:bg-[rgba(34,211,238,0.08)] hover:text-[var(--ifm-color-primary)] md:hidden"
+              className="rounded-lg p-2 text-[var(--panel-chrome-icon)] transition-colors hover:bg-[rgba(34,211,238,0.08)] hover:text-[var(--ifm-color-primary)] md:hidden"
               aria-expanded={mobileNav}
               aria-controls="panel-doc-nav"
               aria-label={t("menu.openNavigation", { defaultValue: "Open menu" })}
@@ -258,10 +258,10 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
               <Menu className="size-6 shrink-0" aria-hidden />
             </button>
             <div className="panel-navbar-brand font-heading min-w-0">
-              <span className="block truncate text-base font-bold tracking-[-0.5px] text-white">
+              <span className="block truncate text-base font-bold tracking-[-0.5px] text-[var(--panel-chrome-fg)]">
                 SharX
               </span>
-              <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/50">
+              <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-[var(--panel-chrome-fg-muted)]">
                 Panel
               </span>
             </div>

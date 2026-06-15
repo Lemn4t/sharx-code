@@ -101,8 +101,8 @@ export default function LoginPage() {
       <header className="panel-navbar relative z-10 overflow-visible">
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <div className="panel-navbar-brand min-w-0">
-            <span className="font-heading block text-base font-bold tracking-[-0.5px] text-white">SharX</span>
-            <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/50">
+            <span className="font-heading block text-base font-bold tracking-[-0.5px] text-[var(--panel-chrome-fg)]">SharX</span>
+            <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-[var(--panel-chrome-fg-muted)]">
               Panel
             </span>
           </div>
@@ -111,7 +111,7 @@ export default function LoginPage() {
             <PanelHeaderAppMeta variant="login" />
             <div className="flex min-w-0 max-w-[11rem] items-center gap-1.5 sm:max-w-[14rem] sm:gap-2">
               <Globe
-                className="size-4 shrink-0 text-white/55"
+                className="size-4 shrink-0 text-[var(--panel-chrome-fg-muted)]"
                 aria-hidden
                 strokeWidth={1.75}
               />

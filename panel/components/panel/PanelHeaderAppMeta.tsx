@@ -111,9 +111,7 @@ export function PanelHeaderAppMeta({ variant = "shell" }: PanelHeaderAppMetaProp
   if (!meta?.version) return null;
 
   const isLogin = variant === "login";
-  const badgeClass = isLogin
-    ? "rounded-full border border-amber-400/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100"
-    : "rounded-full border border-amber-400/40 bg-amber-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-amber-50";
+  const badgeClass = isLogin ? "panel-update-badge panel-update-badge--login" : "panel-update-badge panel-update-badge--panel";
 
   const onCopy = async () => {
     try {
@@ -231,13 +229,13 @@ export function PanelHeaderAppMeta({ variant = "shell" }: PanelHeaderAppMetaProp
         ) : null}
         <button
           type="button"
-          className={`whitespace-nowrap rounded-md px-1.5 py-0.5 text-left text-white/55 transition-colors hover:bg-white/10 hover:text-white/85 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ifm-color-primary)] ${isLogin ? "text-[10px]" : "text-[11px]"}`}
+          className={`whitespace-nowrap rounded-md px-1.5 py-0.5 text-left text-[var(--panel-chrome-fg-muted)] transition-colors hover:bg-[var(--panel-chrome-hover-bg)] hover:text-[var(--panel-chrome-fg-strong)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ifm-color-primary)] ${isLogin ? "text-[10px]" : "text-[11px]"}`}
           title={t("menu.versionClickHint")}
           aria-label={t("menu.versionClickHint")}
           onClick={() => setOpen(true)}
         >
-          <span className="text-white/40">{t("menu.appVersionLabel")}</span>{" "}
-          <span className="font-medium tabular-nums text-white/80">{meta.version}</span>
+          <span className="text-[var(--panel-chrome-fg-subtle)]">{t("menu.appVersionLabel")}</span>{" "}
+          <span className="font-medium tabular-nums text-[var(--panel-chrome-fg-strong)]">{meta.version}</span>
         </button>
       </div>
 

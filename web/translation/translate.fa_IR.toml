@@ -1087,7 +1087,8 @@ ipLimitExcessPolicyDesc = "Which connections to target when a client exceeds the
   boreal = "Boreal"
   web = "SharX Web"
   xuiClassic = "SharX Classic"
-starWars = "Star Wars"
+  starWars = "Star Wars"
+  vision = "Vision"
 
   [pages.settings.subscriptionHeaders]
   title = "Subscription Headers"
@@ -2949,6 +2950,8 @@ addBlock = "Add block"
   customPrefixPlaceholder = "myapp://routing/add/"
   importPastePlaceholder = "incy://routing/add/…"
   generatedDeepLink = "Generated deep link"
+  delivery = "Routing delivery"
+  deliveryHint = "How Routing / Routing-Enable reach Happ clients. Body adds #routing-enable: 1; the deeplink stays in the HTTP header."
 
   [subBuilder.migrated]
   title = "Config was upgraded to sharx-v2"
@@ -3030,6 +3033,13 @@ addBlock = "Add block"
   mtProtoToggle = "MTProto on subscription page"
   mtProtoToggleHint = "When the subscription includes Telegram MTProto (Telemt) links, show a helper next to the installation guide with tg:// open, QR, and copy — same idea as connection keys."
   mtProtoToggleLabel = "Show MTProto block"
+  deliveryLabel = "Delivery method"
+
+    [subBuilder.responseRules.extraHeaderDelivery]
+    header = "HTTP header"
+    body = "Body comment"
+    both = "Header + body"
+    none = "Disabled"
 
 [subBuilder.appSettings.groups]
 encryption = "Encryption"
