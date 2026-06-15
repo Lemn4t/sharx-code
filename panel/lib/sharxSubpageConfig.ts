@@ -386,7 +386,6 @@ export function defaultAppsForPlatform(platform: SupportedPlatform): Installatio
   (Object.keys(APP_CATALOG) as SubscriptionApp[]).forEach((app) => {
     if (app === "custom") return;
     const entry = APP_CATALOG[app];
-    if (entry.wireguardOnly) return;
     if (entry.platforms.includes(platform)) apps.push(app);
   });
   return apps.map<InstallationAppEntry>((app) => ({
@@ -623,6 +622,7 @@ export function defaultAppButtons(): AppButton[] {
     "shadowrocket",
     "clash-meta",
     "karing",
+    "amneziawg",
   ];
   return defaults.map<AppButton>((app) => ({
     id: genBlockId(),
@@ -792,6 +792,7 @@ export const deepLinksSchema = z.object({
     "shadowrocket",
     "clash-meta",
     "karing",
+    "amneziawg",
   ]),
 });
 export type DeepLinks = z.infer<typeof deepLinksSchema>;
@@ -950,6 +951,7 @@ export function defaultDeepLinks(): DeepLinks {
       "shadowrocket",
       "clash-meta",
       "karing",
+      "amneziawg",
     ],
   };
 }
