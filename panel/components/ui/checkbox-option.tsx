@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import type { InputHTMLAttributes, ReactNode } from "react";
 import { useId } from "react";
 import { IconTile, type IconTileTone } from "@/components/ui/icon-tile";
+import { preventLabelFocusScroll } from "@/components/ui/checkbox-field";
 
 function cx(...parts: (string | false | undefined)[]) {
   return parts.filter(Boolean).join(" ");
@@ -43,8 +44,9 @@ export function CheckboxOptionCard({
   return (
     <label
       htmlFor={cid}
+      onMouseDown={preventLabelFocusScroll}
       className={cx(
-        "flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
+        "relative flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
         active
           ? "border-[var(--accent)] bg-[color-mix(in_oklab,var(--accent)_11%,transparent)] shadow-[0_0_0_1px_color-mix(in_oklab,var(--accent)_22%,transparent)]"
           : "border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[color-mix(in_oklab,var(--accent)_28%,var(--border))] hover:bg-[color-mix(in_oklab,var(--fg)_5%,transparent)]",
@@ -106,8 +108,9 @@ export function RadioOptionCard({
   return (
     <label
       htmlFor={cid}
+      onMouseDown={preventLabelFocusScroll}
       className={cx(
-        "flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
+        "relative flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
         active
           ? "border-[var(--accent)] bg-[color-mix(in_oklab,var(--accent)_11%,transparent)] shadow-[0_0_0_1px_color-mix(in_oklab,var(--accent)_22%,transparent)]"
           : "border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[color-mix(in_oklab,var(--accent)_28%,var(--border))] hover:bg-[color-mix(in_oklab,var(--fg)_5%,transparent)]",

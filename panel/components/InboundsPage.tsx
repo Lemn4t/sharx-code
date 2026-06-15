@@ -1117,11 +1117,11 @@ export function InboundsPage() {
       settings = buildTelemtSettingsJson(form.telemtForm);
     } else if (form.protocol === "mixed") {
       // For mixed, accounts are managed entirely via client assignments.
-      // Preserve existing settings from DB on edit; use noauth skeleton on create.
+      // Preserve existing settings from DB on edit; require password auth skeleton on create.
       if (editId != null) {
-        settings = baselineSettings || JSON.stringify({ auth: "noauth", udp: true });
+        settings = baselineSettings || JSON.stringify({ auth: "password", udp: true });
       } else {
-        settings = JSON.stringify({ auth: "noauth", udp: true });
+        settings = JSON.stringify({ auth: "password", udp: true });
       }
     } else if (editId != null) {
       settings = mergeFirstClientIntoSettings(baselineSettings, form.protocol, patch);
@@ -2777,26 +2777,26 @@ export function InboundsPage() {
                         placeholder="encipherment"
                       />
                     </div>
-                    <div className="flex flex-col gap-2 pt-6 sm:pt-0">
-                      <CheckboxField
-                        checked={form.streamForm.tlsCertOneTimeLoading}
-                        onChange={(e) =>
-                          setStreamFormField("tlsCertOneTimeLoading", e.target.checked)
-                        }
-                        label={t("pages.inbounds.tlsCertOneTimeLoading", {
-                          defaultValue: "Certificate one-time loading",
-                        })}
-                      />
-                      <CheckboxField
-                        checked={form.streamForm.tlsCertBuildChain}
-                        onChange={(e) =>
-                          setStreamFormField("tlsCertBuildChain", e.target.checked)
-                        }
-                        label={t("pages.inbounds.tlsCertBuildChain", {
-                          defaultValue: "Build certificate chain",
-                        })}
-                      />
-                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+                    <CheckboxField
+                      checked={form.streamForm.tlsCertOneTimeLoading}
+                      onChange={(e) =>
+                        setStreamFormField("tlsCertOneTimeLoading", e.target.checked)
+                      }
+                      label={t("pages.inbounds.tlsCertOneTimeLoading", {
+                        defaultValue: "Certificate one-time loading",
+                      })}
+                    />
+                    <CheckboxField
+                      checked={form.streamForm.tlsCertBuildChain}
+                      onChange={(e) =>
+                        setStreamFormField("tlsCertBuildChain", e.target.checked)
+                      }
+                      label={t("pages.inbounds.tlsCertBuildChain", {
+                        defaultValue: "Build certificate chain",
+                      })}
+                    />
                   </div>
                   <div>
                     <label
@@ -2890,17 +2890,17 @@ export function InboundsPage() {
                         <option value="http">http</option>
                       </SelectNative>
                     </div>
-                    <div className="flex items-end pb-1">
-                      <CheckboxField
-                        checked={form.streamForm.acceptProxyProtocol}
-                        onChange={(e) =>
-                          setStreamFormField("acceptProxyProtocol", e.target.checked)
-                        }
-                        label={t("pages.inbounds.acceptProxyProtocol", {
-                          defaultValue: "Accept proxy protocol",
-                        })}
-                      />
-                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+                    <CheckboxField
+                      checked={form.streamForm.acceptProxyProtocol}
+                      onChange={(e) =>
+                        setStreamFormField("acceptProxyProtocol", e.target.checked)
+                      }
+                      label={t("pages.inbounds.acceptProxyProtocol", {
+                        defaultValue: "Accept proxy protocol",
+                      })}
+                    />
                   </div>
                 </>
               ) : streamTransportMode === "shadowsocks" ? (
@@ -2959,29 +2959,31 @@ export function InboundsPage() {
                     </div>
                   </div>
                   {form.streamForm.network === "tcp" ? (
-                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div>
-                        <label
-                          className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]"
-                          htmlFor="in-hdr-ss"
-                        >
-                          {t("pages.inbounds.tcpHeaderType", { defaultValue: "TCP header" })}
-                        </label>
-                        <SelectNative
-                          id="in-hdr-ss"
-                          value={form.streamForm.tcpHeaderType}
-                          onChange={(e) =>
-                            setStreamFormField(
-                              "tcpHeaderType",
-                              e.target.value as StreamFormState["tcpHeaderType"],
-                            )
-                          }
-                        >
-                          <option value="none">none</option>
-                          <option value="http">http</option>
-                        </SelectNative>
+                    <>
+                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label
+                            className="mb-1.5 block text-xs font-medium text-[var(--fg-muted)]"
+                            htmlFor="in-hdr-ss"
+                          >
+                            {t("pages.inbounds.tcpHeaderType", { defaultValue: "TCP header" })}
+                          </label>
+                          <SelectNative
+                            id="in-hdr-ss"
+                            value={form.streamForm.tcpHeaderType}
+                            onChange={(e) =>
+                              setStreamFormField(
+                                "tcpHeaderType",
+                                e.target.value as StreamFormState["tcpHeaderType"],
+                              )
+                            }
+                          >
+                            <option value="none">none</option>
+                            <option value="http">http</option>
+                          </SelectNative>
+                        </div>
                       </div>
-                      <div className="flex items-end pb-1">
+                      <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
                         <CheckboxField
                           checked={form.streamForm.acceptProxyProtocol}
                           onChange={(e) =>
@@ -2995,7 +2997,7 @@ export function InboundsPage() {
                           })}
                         />
                       </div>
-                    </div>
+                    </>
                   ) : null}
                   {form.streamForm.network === "ws" ? (
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -3146,20 +3148,20 @@ export function InboundsPage() {
                             <option value="http">http</option>
                           </SelectNative>
                         </div>
-                        <div className="flex items-end pb-1">
-                          <CheckboxField
-                            checked={form.streamForm.acceptProxyProtocol}
-                            onChange={(e) =>
-                              setStreamFormField(
-                                "acceptProxyProtocol",
-                                e.target.checked,
-                              )
-                            }
-                            label={t("pages.inbounds.acceptProxyProtocol", {
-                              defaultValue: "Accept proxy protocol",
-                            })}
-                          />
-                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                        <CheckboxField
+                          checked={form.streamForm.acceptProxyProtocol}
+                          onChange={(e) =>
+                            setStreamFormField(
+                              "acceptProxyProtocol",
+                              e.target.checked,
+                            )
+                          }
+                          label={t("pages.inbounds.acceptProxyProtocol", {
+                            defaultValue: "Accept proxy protocol",
+                          })}
+                        />
                       </div>
                       {form.streamForm.tcpHeaderType === "http" ? (
                         <div className="space-y-3 rounded-lg border border-[var(--border)]/60 p-3">
@@ -3590,15 +3592,15 @@ export function InboundsPage() {
                             placeholder="100-1000"
                           />
                         </div>
-                        <div className="flex items-end pb-1">
-                          <CheckboxField
-                            checked={form.streamForm.xhttpPaddingObfs}
-                            onChange={(e) =>
-                              setStreamFormField("xhttpPaddingObfs", e.target.checked)
-                            }
-                            label="Padding obfs mode"
-                          />
-                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+                        <CheckboxField
+                          checked={form.streamForm.xhttpPaddingObfs}
+                          onChange={(e) =>
+                            setStreamFormField("xhttpPaddingObfs", e.target.checked)
+                          }
+                          label="Padding obfs mode"
+                        />
                       </div>
                       {form.streamForm.xhttpPaddingObfs ? (
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -4278,13 +4280,13 @@ export function InboundsPage() {
                             }
                           />
                         </div>
-                        <div className="flex items-end pb-1">
-                          <CheckboxField
-                            checked={form.streamForm.tlsVerifyClientCertificate}
-                            onChange={(e) => setStreamFormField("tlsVerifyClientCertificate", e.target.checked)}
-                            label={t("pages.inbounds.tlsVerifyClientCertificate", { defaultValue: "Require client certificate (mTLS)" })}
-                          />
-                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+                        <CheckboxField
+                          checked={form.streamForm.tlsVerifyClientCertificate}
+                          onChange={(e) => setStreamFormField("tlsVerifyClientCertificate", e.target.checked)}
+                          label={t("pages.inbounds.tlsVerifyClientCertificate", { defaultValue: "Require client certificate (mTLS)" })}
+                        />
                       </div>
                       <InboundTlsCertPinBlock
                         idPrefix="in-tls"

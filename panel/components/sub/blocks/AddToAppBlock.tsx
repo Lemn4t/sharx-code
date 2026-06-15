@@ -3,10 +3,12 @@
 import { Smartphone } from "lucide-react";
 import {
   APP_CATALOG,
+  filterAppsForSubscriptionProtocol,
   normalizeAddToAppBlock,
   type AppButton,
   type BlockAddToApp,
 } from "@/lib/sharxSubpageConfig";
+import { isWireGuardOnlySubscription } from "@/lib/wireguardConf";
 import { resolveMtProtoLinks, tgProxyDisplayLabel } from "../types";
 import shell from "../subscription-shell.module.css";
 import type { BlockRenderContext } from "./index";
@@ -55,11 +57,12 @@ function makeSubstitutionVars(opts: {
   happEncryptedUrl?: string;
   v2raytunEncryptedUrl?: string;
   preferJsonUrl?: boolean;
+  app?: AppButton["app"];
 }): SubstitutionVars {
-  const base =
-    opts.preferJsonUrl && opts.subscriptionJsonUrl
-      ? opts.subscriptionJsonUrl
-      : opts.subscriptionUrl;
+  const catalog = opts.app ? APP_CATALOG[opts.app] : undefined;
+  const preferJson =
+    (opts.preferJsonUrl || catalog?.preferJsonUrl) && opts.subscriptionJsonUrl;
+  const base = preferJson ? opts.subscriptionJsonUrl! : opts.subscriptionUrl;
   return {
     url: base,
     urlEncoded: encodeURIComponent(base),
@@ -78,11 +81,16 @@ function renderButtons(
   button: AppButton,
   vars: SubstitutionVars,
   tgProxyLinks: string[],
+  subscriptionJsonUrl?: string,
 ): RenderedButton[] {
   if (button.enabled === false) return [];
   const catalog = APP_CATALOG[button.app];
   const label = button.label?.trim() || catalog?.label || button.app;
   const iconUrl = button.iconUrl?.trim() || catalog?.iconUrl || "";
+
+  if (button.app === "amneziawg") {
+    return [];
+  }
 
   if (button.app === "telegram") {
     if (tgProxyLinks.length === 0) return [];
@@ -127,6 +135,9 @@ function renderButtons(
     (button.deepLinkTemplate && button.deepLinkTemplate.trim()) ||
     catalog?.deepLinkTemplate ||
     "{url}";
+  if (button.app === "sing-box" && !subscriptionJsonUrl) {
+    return [];
+  }
   const href = substitute(template, vars);
   if (!href) return [];
   return [
@@ -151,21 +162,31 @@ export function AddToAppBlock({
   if (!data.subscriptionUrl) return null;
 
   const normalized = normalizeAddToAppBlock(block);
-  const buttons = normalized.buttons ?? [];
+  const wgOnly = isWireGuardOnlySubscription(data.links ?? []);
+  const buttons = filterAppsForSubscriptionProtocol(normalized.buttons ?? [], wgOnly);
   if (buttons.length === 0) return null;
 
-  const vars = makeSubstitutionVars({
-    subscriptionUrl: data.subscriptionUrl,
-    subscriptionJsonUrl: data.subscriptionJsonUrl,
-    happEncryptedUrl: data.happEncryptedUrl,
-    v2raytunEncryptedUrl: data.v2raytunEncryptedUrl,
-    preferJsonUrl: normalized.preferJsonUrl,
-  });
+  const preferJsonUrl = normalized.preferJsonUrl;
+  const subscriptionJsonUrl = data.subscriptionJsonUrl;
 
   const tgProxyLinks = resolveMtProtoLinks(data);
 
   const rendered = buttons
-    .flatMap((b) => renderButtons(b, vars, tgProxyLinks))
+    .flatMap((b) =>
+      renderButtons(
+        b,
+        makeSubstitutionVars({
+          subscriptionUrl: data.subscriptionUrl,
+          subscriptionJsonUrl,
+          happEncryptedUrl: data.happEncryptedUrl,
+          v2raytunEncryptedUrl: data.v2raytunEncryptedUrl,
+          preferJsonUrl,
+          app: b.app,
+        }),
+        tgProxyLinks,
+        subscriptionJsonUrl,
+      ),
+    )
     .filter((r): r is RenderedButton => r !== null);
   if (rendered.length === 0) return null;
 
@@ -181,12 +202,12 @@ export function AddToAppBlock({
           <a
             key={link.id}
             href={link.href}
-            className="group flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-sm font-medium text-[#c9d1d9] transition hover:border-[rgba(34,211,238,0.5)] hover:bg-[rgba(34,211,238,0.08)]"
+            className="group flex items-center gap-3 rounded-xl border border-[var(--sub-border)] bg-[var(--sub-surface)] p-3 text-sm font-medium text-[var(--sub-fg)] transition hover:border-[color-mix(in_oklab,var(--sub-accent)_50%,transparent)] hover:bg-[var(--sub-accent-soft)]"
             onClick={(e) => {
               if (!interactive) e.preventDefault();
             }}
           >
-            <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/10 bg-white/5 text-[#22d3ee]">
+            <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-[var(--sub-border)] bg-[var(--sub-surface)] text-[var(--sub-accent)]">
               {link.iconUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -208,7 +229,7 @@ export function AddToAppBlock({
               ) : null}
             </span>
             {link.badge ? (
-              <span className="shrink-0 rounded-full border border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.14)] px-2 py-[1px] text-[10px] font-semibold tracking-wider text-[#22d3ee]">
+              <span className="shrink-0 rounded-full border border-[color-mix(in_oklab,var(--sub-accent)_35%,transparent)] bg-[var(--sub-accent-soft)] px-2 py-[1px] text-[10px] font-semibold tracking-wider text-[var(--sub-accent)]">
                 {link.badge}
               </span>
             ) : null}

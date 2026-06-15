@@ -23,6 +23,8 @@ function preventLabelFocusScroll(e: MouseEvent<HTMLLabelElement>) {
   if (e.button === 0) e.preventDefault();
 }
 
+export { preventLabelFocusScroll };
+
 /** Visual box (must follow a `peer` checkbox input in the same label). */
 export const checkboxControlClass =
   "flex size-[1.125rem] shrink-0 items-center justify-center rounded-[6px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-sm transition-all peer-checked:border-[var(--accent)] peer-checked:bg-[var(--accent)] text-[var(--accent-fg,#0d1117)] peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent)]/40 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-[var(--bg)] peer-disabled:cursor-not-allowed peer-disabled:opacity-50";

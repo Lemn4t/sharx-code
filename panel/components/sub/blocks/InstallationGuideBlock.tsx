@@ -4,6 +4,7 @@ import { Copy, Download, QrCode, Smartphone, Zap } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   APP_CATALOG,
+  filterAppsForSubscriptionProtocol,
   isSharxV2Config,
   normalizeInstallationGuideBlock,
   type AppViewMode,
@@ -16,6 +17,7 @@ import {
   type SubscriptionApp,
   type SupportedPlatform,
 } from "@/lib/sharxSubpageConfig";
+import { firstWireGuardConfFromLinks, isWireGuardOnlySubscription } from "@/lib/wireguardConf";
 import { resolveMtProtoLinks, tgProxyDisplayLabel } from "../types";
 import { PlatformBrandIcon } from "../PlatformBrandIcon";
 import shell from "../subscription-shell.module.css";
@@ -35,17 +37,22 @@ const PLATFORM_META: Record<SupportedPlatform, { label: string }> = {
 function filterVisibleInstallationApps(
   apps: InstallationAppEntry[],
   mtProtoLinks: string[],
+  wgOnly: boolean,
 ): InstallationAppEntry[] {
-  return apps.filter((e) => {
-    if (e.enabled === false) return false;
+  const protocolFiltered = filterAppsForSubscriptionProtocol(apps, wgOnly);
+  return protocolFiltered.filter((e) => {
     if (e.app === "telegram" && mtProtoLinks.length === 0) return false;
     return true;
   });
 }
 
-function platformHasVisibleApps(group: InstallationPlatform, mtProtoLinks: string[]): boolean {
+function platformHasVisibleApps(
+  group: InstallationPlatform,
+  mtProtoLinks: string[],
+  wgOnly: boolean,
+): boolean {
   if (group.enabled === false) return false;
-  return filterVisibleInstallationApps(group.apps, mtProtoLinks).length > 0;
+  return filterVisibleInstallationApps(group.apps, mtProtoLinks, wgOnly).length > 0;
 }
 
 function InstallationGuideShell({ children }: { children: ReactNode }) {
@@ -86,12 +93,58 @@ function base64Url(input: string): string {
   return Buffer.from(input, "utf-8").toString("base64");
 }
 
-function expandTemplate(template: string, url: string): string {
-  if (!template || !url) return "";
+type TemplateVars = {
+  url: string;
+  urlJson: string;
+};
+
+function expandTemplate(template: string, vars: TemplateVars): string {
+  if (!template) return "";
+  const primary = vars.url;
+  if (!primary && !vars.urlJson) return "";
+  const url = primary || vars.urlJson;
   return template
     .replace(/\{url\}/g, url)
     .replace(/\{urlEncoded\}/g, encodeURIComponent(url))
-    .replace(/\{b64Url\}/g, base64Url(url));
+    .replace(/\{b64Url\}/g, base64Url(url))
+    .replace(/\{urlJson\}/g, vars.urlJson)
+    .replace(/\{urlJsonEncoded\}/g, vars.urlJson ? encodeURIComponent(vars.urlJson) : "");
+}
+
+function subscriptionUrlForApp(
+  app: SubscriptionApp,
+  subscriptionUrl: string,
+  subscriptionJsonUrl: string,
+): string {
+  const catalog = APP_CATALOG[app];
+  if (catalog?.preferJsonUrl && subscriptionJsonUrl) return subscriptionJsonUrl;
+  return subscriptionUrl;
+}
+
+function defaultAmneziaWgSteps(
+  appLabel: string,
+  hasDownload: boolean,
+  t: BlockRenderContext["t"],
+): InstallationStep[] {
+  return [
+    {
+      title: t("pages.publicSub.step.install.title", { defaultValue: "Install the app" }),
+      text: hasDownload
+        ? t("pages.publicSub.step.install.textDownload", { defaultValue: "Download {{app}} using the button below.", app: appLabel })
+        : t("pages.publicSub.step.install.textStore", { defaultValue: "Install {{app}} from the official store for your platform.", app: appLabel }),
+    },
+    {
+      title: t("pages.publicSub.stepAmneziaWg.import.title", { defaultValue: "Import configuration" }),
+      text: t("pages.publicSub.stepAmneziaWg.import.text", {
+        defaultValue:
+          "Open AmneziaWG → scan the QR code below, or copy the WireGuard .conf from the keys section and import the file.",
+      }),
+    },
+    {
+      title: t("pages.publicSub.step.connect.title", { defaultValue: "Connect" }),
+      text: t("pages.publicSub.step.connect.text", { defaultValue: "Pick a server and turn the tunnel on. That's it." }),
+    },
+  ];
 }
 
 function defaultSteps(
@@ -163,6 +216,8 @@ function getAppMeta(entry: InstallationAppEntry) {
 type DetailProps = {
   entry: InstallationAppEntry;
   subscriptionUrl: string;
+  subscriptionJsonUrl: string;
+  wireguardConf: string | null;
   showDeeplinks: boolean;
   showQrCodes: boolean;
   interactive: boolean;
@@ -482,6 +537,8 @@ function SelectedAppDetail(props: DetailProps) {
   const {
     entry,
     subscriptionUrl,
+    subscriptionJsonUrl,
+    wireguardConf,
     showDeeplinks,
     showQrCodes,
     interactive,
@@ -494,9 +551,16 @@ function SelectedAppDetail(props: DetailProps) {
     stepsView,
   } = props;
   const { label, deepLinkTemplate, iconUrl, supportsEncrypted } = getAppMeta(entry);
+  const isAmneziaWg = entry.app === "amneziawg";
+  const isSingBox = entry.app === "sing-box";
 
   const isTelegramMulti = entry.app === "telegram" && tgProxyLinks.length > 1;
-  let addHref = expandTemplate(deepLinkTemplate, subscriptionUrl);
+  const urlForTemplate = subscriptionUrlForApp(entry.app, subscriptionUrl, subscriptionJsonUrl);
+  const templateVars: TemplateVars = {
+    url: urlForTemplate,
+    urlJson: subscriptionJsonUrl,
+  };
+  let addHref = isAmneziaWg ? "" : expandTemplate(deepLinkTemplate, templateVars);
   let isEncrypted = false;
   if (entry.app === "telegram") {
     addHref = isTelegramMulti ? "" : tgProxyLinks[0] ?? "";
@@ -509,20 +573,27 @@ function SelectedAppDetail(props: DetailProps) {
       addHref = v2raytunEncryptedUrl;
       isEncrypted = true;
     }
+  } else if (isSingBox && !subscriptionJsonUrl) {
+    addHref = "";
   }
-  const qrUrl = addHref || subscriptionUrl;
+  const qrUrl = isAmneziaWg
+    ? wireguardConf ?? ""
+    : addHref || urlForTemplate || subscriptionUrl;
   const hasDownload = !!entry.downloadUrl?.trim();
+  const effectiveShowDeeplinks = showDeeplinks && !isAmneziaWg;
   const steps =
     entry.steps && entry.steps.length > 0
       ? entry.steps
       : entry.app === "telegram"
         ? defaultTelegramSteps(label, hasDownload, t)
-        : defaultSteps(entry.app, label, hasDownload, t);
+        : isAmneziaWg
+          ? defaultAmneziaWgSteps(label, hasDownload, t)
+          : defaultSteps(entry.app, label, hasDownload, t);
 
   const actions = resolveStepActions(steps, {
     hasDownload,
     downloadUrl: entry.downloadUrl,
-    showDeeplinks,
+    showDeeplinks: effectiveShowDeeplinks,
     addHref,
     isEncrypted,
     subscriptionUrl,
@@ -537,7 +608,9 @@ function SelectedAppDetail(props: DetailProps) {
     step1CopyUrl:
       entry.app === "telegram" && !isTelegramMulti && tgProxyLinks.length > 0
         ? tgProxyLinks[0]
-        : undefined,
+        : isAmneziaWg && wireguardConf
+          ? wireguardConf
+          : undefined,
   });
 
   const stepExtras =
@@ -764,6 +837,9 @@ function AppSelector({
 type PlatformContentProps = {
   group: InstallationPlatform;
   subscriptionUrl: string;
+  subscriptionJsonUrl: string;
+  wireguardConf: string | null;
+  wgOnly: boolean;
   showDeeplinks: boolean;
   showQrCodes: boolean;
   interactive: boolean;
@@ -781,6 +857,9 @@ function PlatformContent(props: PlatformContentProps) {
   const {
     group,
     subscriptionUrl,
+    subscriptionJsonUrl,
+    wireguardConf,
+    wgOnly,
     showDeeplinks,
     showQrCodes,
     interactive,
@@ -794,8 +873,8 @@ function PlatformContent(props: PlatformContentProps) {
     stepsView,
   } = props;
   const visibleApps = useMemo(
-    () => filterVisibleInstallationApps(group.apps, mtProtoLinks),
-    [group.apps, mtProtoLinks],
+    () => filterVisibleInstallationApps(group.apps, mtProtoLinks, wgOnly),
+    [group.apps, mtProtoLinks, wgOnly],
   );
   const [selectedIdx, setSelectedIdx] = useState(0);
   useEffect(() => {
@@ -824,6 +903,8 @@ function PlatformContent(props: PlatformContentProps) {
         <SelectedAppDetail
           entry={selectedApp}
           subscriptionUrl={subscriptionUrl}
+          subscriptionJsonUrl={subscriptionJsonUrl}
+          wireguardConf={wireguardConf}
           showDeeplinks={showDeeplinks}
           showQrCodes={showQrCodes}
           interactive={interactive}
@@ -848,6 +929,9 @@ type GuideProps = {
   groups: InstallationPlatform[];
   title: string;
   subscriptionUrl: string;
+  subscriptionJsonUrl: string;
+  wireguardConf: string | null;
+  wgOnly: boolean;
   showDeeplinks: boolean;
   showQrCodes: boolean;
   interactive: boolean;
@@ -874,7 +958,7 @@ function PlatformTabs(props: GuideProps) {
   } = props;
   void _pv;
   const enabled: InstallationPlatform[] = groups.filter((g: InstallationPlatform) =>
-    platformHasVisibleApps(g, mtProtoLinks),
+    platformHasVisibleApps(g, mtProtoLinks, props.wgOnly),
   );
   const [activePlatform, setActivePlatform] = useState<SupportedPlatform>(
     () => detectPlatform(enabled),
@@ -937,7 +1021,7 @@ function PlatformDropdown(props: GuideProps) {
   } = props;
   void _pv;
   const enabled: InstallationPlatform[] = groups.filter((g: InstallationPlatform) =>
-    platformHasVisibleApps(g, mtProtoLinks),
+    platformHasVisibleApps(g, mtProtoLinks, props.wgOnly),
   );
   const [activePlatform, setActivePlatform] = useState<SupportedPlatform>(
     () => detectPlatform(enabled),
@@ -998,7 +1082,7 @@ function PlatformPills(props: GuideProps) {
   } = props;
   void _pv;
   const enabled: InstallationPlatform[] = groups.filter((g: InstallationPlatform) =>
-    platformHasVisibleApps(g, mtProtoLinks),
+    platformHasVisibleApps(g, mtProtoLinks, props.wgOnly),
   );
   const [activePlatform, setActivePlatform] = useState<SupportedPlatform>(
     () => detectPlatform(enabled),
@@ -1061,7 +1145,7 @@ function PlatformAccordion(props: GuideProps) {
   } = props;
   void _pv;
   const enabled: InstallationPlatform[] = groups.filter((g: InstallationPlatform) =>
-    platformHasVisibleApps(g, mtProtoLinks),
+    platformHasVisibleApps(g, mtProtoLinks, props.wgOnly),
   );
 
   if (enabled.length === 0) return null;
@@ -1074,7 +1158,7 @@ function PlatformAccordion(props: GuideProps) {
           {enabled.map((g: InstallationPlatform, gi: number) => {
             const plat = g.platform as SupportedPlatform;
             const meta = PLATFORM_META[plat];
-            const visibleCount = filterVisibleInstallationApps(g.apps, mtProtoLinks).length;
+            const visibleCount = filterVisibleInstallationApps(g.apps, mtProtoLinks, props.wgOnly).length;
             return (
               <details
                 key={plat}
@@ -1160,11 +1244,16 @@ export function InstallationGuideBlock({
   const rr = isSharxV2Config(data.config) ? data.config.responseRules : undefined;
   const mtProtoEnabled = rr?.mtProtoEnabled !== false;
   const mtProtoLinks = mtProtoEnabled ? resolveMtProtoLinks(data) : [];
+  const wgOnly = isWireGuardOnlySubscription(data.links ?? []);
+  const wireguardConf = firstWireGuardConfFromLinks(data.links ?? []);
 
   const guideProps: GuideProps = {
     groups,
     title,
     subscriptionUrl,
+    subscriptionJsonUrl: data.subscriptionJsonUrl ?? "",
+    wireguardConf,
+    wgOnly,
     showDeeplinks,
     showQrCodes,
     interactive,

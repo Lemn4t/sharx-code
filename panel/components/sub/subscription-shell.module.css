@@ -154,6 +154,23 @@
   --sub-accent-ambient-soft: color-mix(in oklab, var(--sub-accent-ambient) 8%, transparent);
 }
 
+.root[data-color-preset="vision"] {
+  --sub-bg: #eef0f8;
+  --sub-bg-elevated: rgba(255, 255, 255, 0.68);
+  --sub-fg: #1d1d1f;
+  --sub-fg-strong: #000000;
+  --sub-fg-muted: #636366;
+  --sub-fg-subtle: rgba(29, 29, 31, 0.42);
+  --sub-border: rgba(255, 255, 255, 0.55);
+  --sub-border-soft: rgba(255, 255, 255, 0.35);
+  --sub-surface: rgba(255, 255, 255, 0.48);
+  --sub-surface-strong: rgba(255, 255, 255, 0.78);
+  --sub-accent: #0071e3;
+  --sub-accent-ambient: #bf5af2;
+  --sub-accent-soft: color-mix(in oklab, var(--sub-accent) 14%, transparent);
+  --sub-accent-ambient-soft: color-mix(in oklab, var(--sub-accent-ambient) 8%, transparent);
+}
+
 /* Light theme override — activated via data-theme="light" on .root
  * Placed after color-preset rules so it wins same-specificity; replaces dark patterns. */
 .root[data-theme="light"] {
@@ -275,6 +292,44 @@
   --sub-accent-ambient: #3ad3ba;
   --sub-accent-soft: color-mix(in oklab, var(--sub-accent) 13%, transparent);
   --sub-accent-ambient-soft: color-mix(in oklab, var(--sub-accent-ambient) 7%, transparent);
+}
+
+.root[data-theme="light"][data-color-preset="vision"] {
+  --sub-bg: #eef0f8;
+  --sub-bg-elevated: rgba(255, 255, 255, 0.72);
+  --sub-fg: #1d1d1f;
+  --sub-fg-strong: #000000;
+  --sub-fg-muted: #636366;
+  --sub-fg-subtle: rgba(29, 29, 31, 0.42);
+  --sub-border: rgba(255, 255, 255, 0.65);
+  --sub-border-soft: rgba(255, 255, 255, 0.4);
+  --sub-surface: rgba(255, 255, 255, 0.55);
+  --sub-surface-strong: rgba(255, 255, 255, 0.82);
+  --sub-accent: #0071e3;
+  --sub-accent-ambient: #bf5af2;
+  --sub-accent-soft: color-mix(in oklab, var(--sub-accent) 12%, transparent);
+  --sub-accent-ambient-soft: color-mix(in oklab, var(--sub-accent-ambient) 7%, transparent);
+
+  background-color: var(--sub-bg);
+  background-image:
+    radial-gradient(ellipse 80% 60% at 10% 0%, color-mix(in oklab, var(--sub-accent-ambient) 14%, transparent), transparent 55%),
+    radial-gradient(ellipse 70% 55% at 90% 10%, color-mix(in oklab, var(--sub-accent) 10%, transparent), transparent 50%);
+}
+
+.root[data-theme="light"][data-color-preset="vision"] .animatedBg {
+  opacity: 0.65;
+}
+
+.root[data-color-preset="vision"] .animatedBg,
+.root[data-theme="light"][data-color-preset="vision"] .animatedBg {
+  background:
+    radial-gradient(ellipse 55% 40% at 20% 35%, color-mix(in oklab, var(--sub-accent-ambient) 16%, transparent), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 100% 50%, color-mix(in oklab, var(--sub-accent) 12%, transparent), transparent 50%);
+}
+
+.root[data-theme="light"][data-color-preset="vision"] [class*="rounded-xl"] {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
 .animatedBg {

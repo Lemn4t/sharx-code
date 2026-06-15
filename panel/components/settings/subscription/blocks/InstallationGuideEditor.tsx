@@ -318,6 +318,7 @@ function PlatformGroupCard({
   const platformApps = subscriptionApps.filter((app) => {
     if (app === "custom") return false;
     if (usedApps.has(app)) return false;
+    if (APP_CATALOG[app]?.wireguardOnly) return false;
     return APP_CATALOG[app]?.platforms.includes(group.platform);
   });
   const [newApp, setNewApp] = useState<SubscriptionApp>(

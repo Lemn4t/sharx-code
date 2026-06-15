@@ -48,6 +48,8 @@ export const subscriptionApps = [
   "foxray",
   "flclash",
   "amneziavpn",
+  /** Standalone AmneziaWG — WireGuard .conf / QR only (no deep link). */
+  "amneziawg",
   /** Telegram: MTProto proxy (`tg://proxy…`) from the subscription; not the VPN subscription URL. */
   "telegram",
   "custom",
@@ -64,6 +66,10 @@ export type AppCatalogEntry = {
   supportsEncrypted: boolean;
   /** Default icon URL; empty string means built-in Smartphone icon. */
   iconUrl: string;
+  /** Shown only on WireGuard-only subscriptions (import via .conf / QR). */
+  wireguardOnly?: boolean;
+  /** Prefer JSON subscription URL in deep links (e.g. sing-box). */
+  preferJsonUrl?: boolean;
 };
 
 /**
@@ -157,8 +163,9 @@ export const APP_CATALOG: Record<SubscriptionApp, AppCatalogEntry> = {
   "sing-box": {
     label: "sing-box",
     platforms: ["ios", "android", "windows", "macos", "linux"],
-    deepLinkTemplate: "sing-box://import-remote-profile?url={urlEncoded}",
+    deepLinkTemplate: "sing-box://import-remote-profile?url={urlJsonEncoded}",
     supportsEncrypted: false,
+    preferJsonUrl: true,
     iconUrl: appFaviconUrl("sing-box.sagernet.org"),
   },
   stash: {
@@ -208,6 +215,14 @@ export const APP_CATALOG: Record<SubscriptionApp, AppCatalogEntry> = {
     platforms: ["ios", "android", "windows", "macos", "linux"],
     deepLinkTemplate: "amnezia://add?config={urlEncoded}",
     supportsEncrypted: false,
+    iconUrl: appFaviconUrl("amnezia.org"),
+  },
+  amneziawg: {
+    label: "AmneziaWG",
+    platforms: ["ios", "android", "windows", "macos", "linux"],
+    deepLinkTemplate: "",
+    supportsEncrypted: false,
+    wireguardOnly: true,
     iconUrl: appFaviconUrl("amnezia.org"),
   },
   telegram: {
@@ -371,6 +386,7 @@ export function defaultAppsForPlatform(platform: SupportedPlatform): Installatio
   (Object.keys(APP_CATALOG) as SubscriptionApp[]).forEach((app) => {
     if (app === "custom") return;
     const entry = APP_CATALOG[app];
+    if (entry.wireguardOnly) return;
     if (entry.platforms.includes(platform)) apps.push(app);
   });
   return apps.map<InstallationAppEntry>((app) => ({
@@ -396,7 +412,47 @@ export function defaultInstallationGroups(): InstallationPlatform[] {
 }
 
 /** Apps added after initial config save — merged into existing blocks on normalize. */
-const SUBSCRIPTION_APP_ROLLOUT: SubscriptionApp[] = ["incy"];
+const SUBSCRIPTION_APP_ROLLOUT: SubscriptionApp[] = [];
+
+/** Default entry for auto-injected WireGuard-only apps on WG subscriptions. */
+export function defaultWireGuardAppEntry(app: SubscriptionApp): InstallationAppEntry {
+  return {
+    app,
+    enabled: true,
+    label: "",
+    downloadUrl: "",
+    steps: [],
+    deepLinkTemplate: "",
+    useEncrypted: APP_CATALOG[app]?.supportsEncrypted === true,
+  };
+}
+
+/**
+ * Filter installation / add-to-app entries by subscription protocol mix.
+ * WG-only: keep wireguardOnly apps (+ inject amneziawg); hide Xray clients.
+ * Mixed / Xray: hide wireguardOnly apps.
+ */
+export function filterAppsForSubscriptionProtocol<T extends { app: SubscriptionApp; enabled?: boolean }>(
+  apps: T[],
+  wgOnly: boolean,
+): T[] {
+  if (!wgOnly) {
+    return apps.filter((e) => {
+      if (e.enabled === false) return false;
+      const cat = APP_CATALOG[e.app];
+      return !cat?.wireguardOnly;
+    });
+  }
+  const filtered = apps.filter((e) => {
+    if (e.enabled === false) return false;
+    const cat = APP_CATALOG[e.app];
+    return cat?.wireguardOnly === true;
+  });
+  if (!filtered.some((e) => e.app === "amneziawg")) {
+    return [...filtered, defaultWireGuardAppEntry("amneziawg") as unknown as T];
+  }
+  return filtered;
+}
 
 function newInstallationAppEntry(app: SubscriptionApp): InstallationAppEntry {
   return {

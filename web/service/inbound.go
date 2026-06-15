@@ -397,8 +397,8 @@ func (s *InboundService) BuildSettingsFromClientEntities(inbound *model.Inbound,
 			settings["auth"] = "password"
 			settings["accounts"] = accounts
 		} else {
-			settings["auth"] = "noauth"
-			delete(settings, "accounts")
+			settings["auth"] = "password"
+			settings["accounts"] = []any{}
 		}
 		if _, ok := settings["udp"]; !ok {
 			settings["udp"] = true

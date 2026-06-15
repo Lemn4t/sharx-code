@@ -15,6 +15,8 @@ export const PANEL_THEME_IDS = [
   "xuiClassic",
   /** Deep space + gold / lightsaber accents */
   "starWars",
+  /** Light frosted glass — Apple Vision / Liquid Glass */
+  "vision",
 ] as const;
 
 export type PanelThemeId = (typeof PANEL_THEME_IDS)[number];
@@ -31,6 +33,7 @@ const META_THEME: Record<PanelThemeId, string> = {
   web: "#05060a",
   xuiClassic: "#0a1222",
   starWars: "#030508",
+  vision: "#f5f5f7",
 };
 
 function isPanelThemeId(s: string | null | undefined): s is PanelThemeId {
@@ -55,7 +58,7 @@ function setMetaThemeColor(hex: string) {
 export function applyPanelTheme(id: PanelThemeId): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  root.setAttribute("data-theme", "dark");
+  root.setAttribute("data-theme", id === "vision" ? "light" : "dark");
   if (id === "default") {
     root.removeAttribute(THEME_ATTR);
   } else {
