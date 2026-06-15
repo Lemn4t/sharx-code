@@ -27,7 +27,9 @@ RUN apk --no-cache --update add \
   gcc \
   curl \
   unzip \
-  bash
+  bash \
+  git \
+  make
 
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./

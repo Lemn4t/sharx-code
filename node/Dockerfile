@@ -7,8 +7,8 @@ ARG BUILDKIT_INLINE_CACHE=1
 # Set by `docker buildx build --platform` (do not use ARG TARGETARCH=amd64: it blocks the auto value).
 ARG TARGETARCH
 
-# Install build dependencies
-RUN apk --no-cache add curl unzip
+# Install build dependencies (git/make for AmneziaWG sidecar in DockerInit.sh)
+RUN apk --no-cache add curl unzip build-base git make
 
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
