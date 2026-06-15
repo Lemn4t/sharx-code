@@ -25,6 +25,8 @@ services:
     # For "kick user" (conntrack drop) in single-node mode, grant network admin to the app container:
     cap_add: [NET_ADMIN]
     network_mode: host    # ports:
+    devices:
+      - /dev/net/tun:/dev/net/tun
  #   ports:
  #     - "2053:2053"   # Web UI
  #     - "2096:2096"   # Subscriptions

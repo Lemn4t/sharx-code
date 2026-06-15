@@ -47,6 +47,8 @@ import {
   defaultStreamSettingsString,
   defaultVlessTrojanFallbackRow,
   getInboundStreamTransportMode,
+  isSidecarInboundProtocol,
+  sidecarEmptySniffingString,
   hostFromRealityTarget,
   mergeFirstClientIntoSettings,
   newWireGuardSecretKeyBase64,
@@ -811,18 +813,28 @@ export function InboundsPage() {
   );
 
   const applyStreamPresetForProtocol = (protocol: InboundFormProtocol) => {
+    if (isSidecarInboundProtocol(protocol)) {
+      setCoreConfigDraftDirty(false);
+      setCoreConfigDraft("");
+    }
     setForm((f) => {
       const isSwitchingToWg = protocol === "wireguard" && f.protocol !== "wireguard";
       const isSwitchingToAwg = protocol === "amneziawg" && f.protocol !== "amneziawg";
       const isSwitchingToTelemt = protocol === "telemt" && f.protocol !== "telemt";
-      const streamForm =
-        protocol === "hysteria" || protocol === "hysteria2"
+      const isSidecar =
+        protocol === "telemt" ||
+        protocol === "amneziawg" ||
+        protocol === "wireguard";
+      const streamForm = isSidecar
+        ? parseStreamSettingsToForm("{}", protocol)
+        : protocol === "hysteria" || protocol === "hysteria2"
           ? defaultStreamFormHysteria()
           : defaultStreamForm();
       const out = {
         ...f,
         protocol,
         streamForm,
+        vlessFlow: isSidecar ? "" : f.vlessFlow,
         wireguardForm: isSwitchingToWg ? defaultWireguardForm() : f.wireguardForm,
         amneziawgForm: isSwitchingToAwg ? defaultAmneziaWgInboundForm() : f.amneziawgForm,
         telemtForm: isSwitchingToTelemt ? defaultTelemtForm() : f.telemtForm,
@@ -1368,6 +1380,8 @@ export function InboundsPage() {
           return;
         }
         const ib = r.obj as InboundDetail;
+        const proto = isInboundFormProtocol(ib.protocol) ? ib.protocol : "vless";
+        const sidecar = isSidecarInboundProtocol(proto);
         const body: Record<string, unknown> = {
           remark: ib.remark ?? "",
           enable: nextEnable,
@@ -1375,8 +1389,12 @@ export function InboundsPage() {
           port: ib.port,
           protocol: ib.protocol,
           settings: ib.settings ?? "{}",
-          streamSettings: ib.streamSettings ?? defaultStreamSettingsString(),
-          sniffing: ib.sniffing ?? defaultSniffingString(),
+          streamSettings: sidecar
+            ? "{}"
+            : (ib.streamSettings ?? defaultStreamSettingsString()),
+          sniffing: sidecar
+            ? sidecarEmptySniffingString()
+            : (ib.sniffing ?? defaultSniffingString()),
           total: ib.total ?? 0,
           expiryTime: ib.expiryTime ?? 0,
           trafficReset: ib.trafficReset || "never",
@@ -2120,7 +2138,9 @@ export function InboundsPage() {
                 </div>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
-                {form.protocol !== "wireguard" ? (
+                {form.protocol !== "wireguard" &&
+                form.protocol !== "telemt" &&
+                form.protocol !== "amneziawg" ? (
                   <div
                     className="inline-flex w-fit shrink-0 rounded-xl border border-[var(--border)] bg-[color-mix(in_oklab,var(--fg)_4%,transparent)] p-0.5"
                     role="group"
@@ -2151,19 +2171,33 @@ export function InboundsPage() {
                         setInboundModalView("preview");
                       }}
                     >
-                      {form.protocol === "telemt"
+                      {t("pages.inbounds.viewXrayCorePreview", {
+                        defaultValue: "Xray config",
+                      })}
+                    </button>
+                  </div>
+                ) : form.protocol === "telemt" || form.protocol === "amneziawg" ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="text-xs"
+                    onClick={() => {
+                      setCoreConfigDraftDirty(false);
+                      setInboundModalView((v) => (v === "preview" ? "form" : "preview"));
+                    }}
+                  >
+                    {inboundModalView === "preview"
+                      ? form.protocol === "telemt"
+                        ? t("pages.inbounds.viewForm", { defaultValue: "Form" })
+                        : t("pages.inbounds.viewForm", { defaultValue: "Form" })
+                      : form.protocol === "telemt"
                         ? t("pages.inbounds.viewTelemtTomlPreview", {
                             defaultValue: "Telemt preview",
                           })
-                        : form.protocol === "amneziawg"
-                          ? t("pages.inbounds.viewAmneziaWgConfPreview", {
-                              defaultValue: "AWG preview",
-                            })
-                          : t("pages.inbounds.viewXrayCorePreview", {
-                              defaultValue: "Xray config",
-                            })}
-                    </button>
-                  </div>
+                        : t("pages.inbounds.viewAmneziaWgConfPreview", {
+                            defaultValue: "AWG preview",
+                          })}
+                  </Button>
                 ) : null}
                 <div className="text-xs text-[var(--fg-subtle)] sm:text-right">
                   {t("protocol")}:{" "}
@@ -2906,6 +2940,13 @@ export function InboundsPage() {
                   {t("pages.inbounds.telemtTransportHint", {
                     defaultValue:
                       "Telemt does not use Xray `streamSettings`. The process listens on this inbound port with Telemt-specific options on the next step; users and MTProto secrets are created when clients are assigned.",
+                  })}
+                </p>
+              ) : streamTransportMode === "amneziawg" ? (
+                <p className="text-xs leading-relaxed text-[var(--fg-subtle)]">
+                  {t("pages.inbounds.amneziawgTransportHint", {
+                    defaultValue:
+                      "AmneziaWG uses UDP on the inbound port via amneziawg-go (sidecar). There is no Xray TCP/TLS/REALITY streamSettings — configure keys and obfuscation on the next step.",
                   })}
                 </p>
               ) : streamTransportMode === "mixed" ? (

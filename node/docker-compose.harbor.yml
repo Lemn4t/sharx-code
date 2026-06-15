@@ -7,7 +7,10 @@ services:
     restart: unless-stopped
     labels:
       com.centurylinklabs.watchtower.enable: "true"
+    cap_add: [NET_ADMIN]
     network_mode: host
+    devices:
+      - /dev/net/tun:/dev/net/tun
     volumes:
       - sharx-node-bin:/app/bin
       - sharx-node-logs:/app/logs

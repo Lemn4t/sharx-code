@@ -34,4 +34,5 @@ if [ -d /opt/sharx-node-embedded/bin ]; then
     fi
   fi
 fi
+. /app/scripts/ensure-dev-net-tun.sh 2>/dev/null || true
 exec "$@"

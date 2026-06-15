@@ -94,7 +94,20 @@ func applySidecarPanelForms(in *model.Inbound, wg *service.WireGuardInboundReque
 	if err := applyWireGuardPanelForm(in, wg); err != nil {
 		return err
 	}
-	return applyAmneziaWGPanelForm(in, awg)
+	if err := applyAmneziaWGPanelForm(in, awg); err != nil {
+		return err
+	}
+	normalizeSidecarInboundFields(in)
+	return nil
+}
+
+// normalizeSidecarInboundFields clears Xray-only transport fields for Telemt / AmneziaWG inbounds.
+func normalizeSidecarInboundFields(in *model.Inbound) {
+	if in == nil || !model.IsSidecarProtocol(in.Protocol) {
+		return
+	}
+	in.StreamSettings = "{}"
+	in.Sniffing = `{"enabled":false,"destOverride":[],"metadataOnly":false,"routeOnly":false}`
 }
 
 // InboundController handles HTTP requests related to Xray inbounds management.

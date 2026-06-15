@@ -94,7 +94,8 @@ ENV XUI_DATA_FOLDER=/app/data
 EXPOSE 8080
 
 COPY node/docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+COPY scripts/ensure-dev-net-tun.sh /app/scripts/ensure-dev-net-tun.sh
+RUN chmod +x /app/docker-entrypoint.sh /app/scripts/ensure-dev-net-tun.sh
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 # Pairing only: SECRET_KEY env; see panel "copy compose"

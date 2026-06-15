@@ -1040,7 +1040,22 @@ export type InboundStreamTransportMode =
   | "shadowsocks"
   | "wireguard"
   | "telemt"
+  | "amneziawg"
   | "full";
+
+/** Inbounds supervised outside Xray-core (no streamSettings / sniffing in worker JSON). */
+export function isSidecarInboundProtocol(protocol: InboundFormProtocol): boolean {
+  return protocol === "telemt" || protocol === "amneziawg";
+}
+
+export function sidecarEmptySniffingString(): string {
+  return JSON.stringify({
+    enabled: false,
+    destOverride: [],
+    metadataOnly: false,
+    routeOnly: false,
+  });
+}
 
 export function getInboundStreamTransportMode(
   protocol: InboundFormProtocol,
@@ -1051,8 +1066,9 @@ export function getInboundStreamTransportMode(
   /** TCP/WS, stream security none — Shadowsocks has its own crypto. */
   if (protocol === "shadowsocks") return "shadowsocks";
   if (protocol === "wireguard") return "wireguard";
-  /** Telemt runs outside Xray — no Xray streamSettings. */
+  /** Telemt / AmneziaWG run outside Xray — no Xray streamSettings. */
   if (protocol === "telemt") return "telemt";
+  if (protocol === "amneziawg") return "amneziawg";
   return "full";
 }
 

@@ -60,6 +60,7 @@ COPY web/ ./web/
 COPY third_party/telemt-sharx/prebuilt/ ./third_party/telemt-sharx/prebuilt/
 COPY main.go ./
 COPY DockerInit.sh DockerEntrypoint.sh ./
+COPY scripts/ensure-dev-net-tun.sh ./scripts/
 COPY --from=panelui /webpanel/ ./web/panel
 
 # Make all .sh files executable and fix line endings if needed
@@ -102,6 +103,7 @@ RUN apk add --no-cache --update \
 
 COPY --from=builder /app/build/ /app/
 COPY --from=builder /app/DockerEntrypoint.sh /app/
+COPY --from=builder /app/scripts/ensure-dev-net-tun.sh /app/scripts/ensure-dev-net-tun.sh
 
 # Configure fail2ban
 RUN rm -f /etc/fail2ban/jail.d/alpine-ssh.conf \
@@ -112,6 +114,7 @@ RUN rm -f /etc/fail2ban/jail.d/alpine-ssh.conf \
 
 RUN chmod +x \
   /app/DockerEntrypoint.sh \
+  /app/scripts/ensure-dev-net-tun.sh \
   /app/x-ui
 
 ENV XUI_ENABLE_FAIL2BAN="true"
