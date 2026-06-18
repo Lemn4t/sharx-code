@@ -751,7 +751,7 @@ export const appSettingsSchema = z.object({
 });
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 
-export const routingDeepLinkPresetSchema = z.enum(["happ", "incy", "sharx", "custom"]);
+export const routingDeepLinkPresetSchema = z.enum(["happ", "happ_onadd", "incy", "sharx", "custom"]);
 export type RoutingDeepLinkPreset = z.infer<typeof routingDeepLinkPresetSchema>;
 
 export const routingProfileSchema = z.object({

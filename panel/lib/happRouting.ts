@@ -129,6 +129,7 @@ export function parseHappConfigJsonText(text: string): HappRoutingConfig | null 
 /** Built-in presets: prefix must end before the Base64 JSON payload. */
 export const ROUTING_DEEPLINK_BUILTIN_PREFIX = {
   happ: "happ://routing/add/",
+  happ_onadd: "happ://routing/onadd/",
   incy: "incy://routing/add/",
   sharx: "sharx://routing/add/",
 } as const;
@@ -198,7 +199,7 @@ export function decodeHappRoutingPayload(b64: string): HappRoutingConfig | null 
  */
 export function extractPayloadFromRoutingDeepLink(text: string): string | null {
   const s = text.trim();
-  const m1 = s.match(/:[/][/]routing[/]add[/]([^/?#\s]+)/i);
+  const m1 = s.match(/:[/][/]routing[/](?:add|onadd)[/]([^/?#\s]+)/i);
   if (m1?.[1]) {
     try {
       return decodeURIComponent(m1[1]);
@@ -206,7 +207,7 @@ export function extractPayloadFromRoutingDeepLink(text: string): string | null {
       return m1[1];
     }
   }
-  const m2 = s.match(/\/routing\/add\/([^/?#\s]+)/i);
+  const m2 = s.match(/\/routing\/(?:add|onadd)\/([^/?#\s]+)/i);
   if (m2?.[1]) {
     try {
       return decodeURIComponent(m2[1]);

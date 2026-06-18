@@ -263,6 +263,9 @@ function ProfileCard({
                     <option value="happ">
                       {t("subBuilder.clientRouting.preset.happ", { defaultValue: "Happ (happ://…)" })}
                     </option>
+                    <option value="happ_onadd">
+                      {t("subBuilder.clientRouting.preset.happOnAdd", { defaultValue: "Happ OnAdd (happ://routing/onadd/…)" })}
+                    </option>
                     <option value="incy">
                       {t("subBuilder.clientRouting.preset.incy", { defaultValue: "Incy (incy://…)" })}
                     </option>
@@ -332,7 +335,7 @@ function ProfileCard({
                 <p className="mb-2 text-[11px] text-[var(--fg-subtle)]">
                   {t("subBuilder.clientRouting.importHint", {
                     defaultValue:
-                      "Paste a deep link (happ://, incy://, sharx://, …) with /routing/add/, or Base64 / JSON.",
+                      "Paste a deep link (happ://, incy://, sharx://, …) with /routing/add/ or /routing/onadd/, or Base64 / JSON.",
                   })}
                 </p>
                 <textarea
