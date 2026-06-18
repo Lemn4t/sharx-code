@@ -223,25 +223,25 @@ func tunnelSubnetFromConf(conf string) string {
 	return "10.8.0.0/24"
 }
 
-func iptablesHasRule(table string, args ...string) bool {
-	cmdArgs := []string{"-C"}
+// buildIptablesArgs builds argv for iptables: table (-t) before command (-A/-C/-D).
+func buildIptablesArgs(table, command string, args ...string) []string {
+	cmdArgs := make([]string, 0, 4+len(args))
 	if table != "" {
 		cmdArgs = append(cmdArgs, "-t", table)
 	}
-	cmdArgs = append(cmdArgs, args...)
-	return exec.Command("iptables", cmdArgs...).Run() == nil
+	cmdArgs = append(cmdArgs, command)
+	return append(cmdArgs, args...)
+}
+
+func iptablesHasRule(table string, args ...string) bool {
+	return exec.Command("iptables", buildIptablesArgs(table, "-C", args...)...).Run() == nil
 }
 
 func iptablesEnsureAppend(table string, args ...string) {
 	if iptablesHasRule(table, args...) {
 		return
 	}
-	var cmdArgs []string
-	if table != "" {
-		cmdArgs = append(cmdArgs, "-t", table)
-	}
-	cmdArgs = append(cmdArgs, "-A")
-	cmdArgs = append(cmdArgs, args...)
+	cmdArgs := buildIptablesArgs(table, "-A", args...)
 	if out, err := exec.Command("iptables", cmdArgs...).CombinedOutput(); err != nil {
 		logger.Warningf("amneziawg iptables append %v: %v (%s)", args, err, strings.TrimSpace(string(out)))
 	}
