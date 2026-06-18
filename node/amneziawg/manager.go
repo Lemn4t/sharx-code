@@ -236,10 +236,11 @@ func iptablesEnsureAppend(table string, args ...string) {
 	if iptablesHasRule(table, args...) {
 		return
 	}
-	cmdArgs := []string{"-A"}
+	var cmdArgs []string
 	if table != "" {
 		cmdArgs = append(cmdArgs, "-t", table)
 	}
+	cmdArgs = append(cmdArgs, "-A")
 	cmdArgs = append(cmdArgs, args...)
 	if out, err := exec.Command("iptables", cmdArgs...).CombinedOutput(); err != nil {
 		logger.Warningf("amneziawg iptables append %v: %v (%s)", args, err, strings.TrimSpace(string(out)))
