@@ -69,6 +69,30 @@ func TestRoutingHeaderValueForSubscription_incyPrefix(t *testing.T) {
 	}
 }
 
+func TestRoutingHeaderValueForSubscription_happOnAddPrefix(t *testing.T) {
+	cfg := &SharxSubpageConfigV2{
+		Routing: &SharxSubpageRouting{
+			Profiles: []SharxSubpageRoutingProfile{
+				{Source: "inline", Body: `{"Name":"onadd"}`, DeepLinkPreset: "happ_onadd"},
+			},
+		},
+	}
+	v, ok := RoutingHeaderValueForSubscription(cfg)
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if !strings.HasPrefix(v, happRoutingOnAddPrefix) {
+		t.Fatalf("expected happ onadd prefix, got %q", v)
+	}
+}
+
+func TestNormalizeSubscriptionRoutingHeaderValue_onAddDeeplink(t *testing.T) {
+	full := happRoutingOnAddPrefix + base64.StdEncoding.EncodeToString([]byte(`{"a":1}`))
+	if got := NormalizeSubscriptionRoutingHeaderValue(full); got != full {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestRoutingPayloadBase64ForSubscription_skipsUrl(t *testing.T) {
 	cfg := &SharxSubpageConfigV2{
 		Routing: &SharxSubpageRouting{
