@@ -578,32 +578,18 @@ func (s *XrayService) ApplySessionIPBlockHotAfterDB(clientId int, email, normali
 			if len(nodes) == 0 {
 				return
 			}
-			var failed []*model.Node
+			var failed int
 			for _, n := range nodes {
 				if n == nil {
 					continue
 				}
 				if err := ns.ApplySessionIPBlockRoutingToNode(n, blocked, tag, email, cidr); err != nil {
-					logger.Warningf("session IP block: hot push node %q: %v", n.Name, err)
-					failed = append(failed, n)
+					logger.Warningf("session IP block: hot push node %q: %v (skipped apply-config fallback; rule is in panel config for next sync)", n.Name, err)
+					failed++
 				}
 			}
-			if len(failed) == len(nodes) {
-				s.RestartXrayAsync(false)
-				return
-			}
-			for _, n := range failed {
-				cfgJSON, coreH, err := s.BuildWorkerXrayConfigForNodeWithMeta(n)
-				if err != nil {
-					logger.Warningf("session IP block: build config for node %q: %v", n.Name, err)
-					continue
-				}
-				ibs, _ := s.InboundsForWorkerNode(n)
-				telm, awg, _ := BuildWorkerSidecarPayloadsForNode(n, ibs)
-				meta := NewApplyWorkerConfigMeta(cfgJSON, coreH)
-				if err := ns.ApplyConfigToNode(n, cfgJSON, &telm, &awg, meta); err != nil {
-					logger.Warningf("session IP block: apply-config fallback node %q: %v", n.Name, err)
-				}
+			if failed == len(nodes) && len(nodes) > 0 {
+				logger.Warningf("session IP block: hot push failed on all %d node(s); no apply-config fallback (avoids Xray restart storm)", len(nodes))
 			}
 			return
 		}

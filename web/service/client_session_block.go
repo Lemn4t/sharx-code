@@ -151,6 +151,10 @@ func (s *ClientSessionBlockService) SetSessionIPBlocked(userId, clientId int, ip
 		SyncTelemtAfterClientSessionBlocksChanged(clientId)
 		return nil
 	}
+	var existing model.ClientBlockedSessionIP
+	if err := db.Where("client_id = ? AND ip = ?", clientId, ip).First(&existing).Error; err == nil {
+		return nil
+	}
 	row := model.ClientBlockedSessionIP{
 		ClientId:  clientId,
 		IP:        ip,
@@ -184,6 +188,16 @@ func (s *ClientSessionBlockService) BlockSessionIPInternal(clientId int, ip stri
 	db := database.GetDB()
 	email := strings.TrimSpace(cl.Name)
 	now := time.Now().Unix()
+	var existing model.ClientBlockedSessionIP
+	if err := db.Where("client_id = ? AND ip = ?", clientId, ip).First(&existing).Error; err == nil {
+		if existing.ExpiresAt == expiresAt {
+			return nil
+		}
+		return db.Model(&existing).Updates(map[string]interface{}{
+			"expires_at": expiresAt,
+			"created_at": now,
+		}).Error
+	}
 	row := model.ClientBlockedSessionIP{
 		ClientId:  clientId,
 		IP:        ip,
