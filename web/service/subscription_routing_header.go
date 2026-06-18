@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	happRoutingAddPrefix  = "happ://routing/add/"
-	incyRoutingAddPrefix  = "incy://routing/add/"
-	sharxRoutingAddPrefix = "sharx://routing/add/"
+	happRoutingAddPrefix   = "happ://routing/add/"
+	happRoutingOnAddPrefix = "happ://routing/onadd/"
+	incyRoutingAddPrefix   = "incy://routing/add/"
+	sharxRoutingAddPrefix  = "sharx://routing/add/"
 )
 
 // routingDeepLinkPrefix mirrors panel/lib/happRouting.ts getRoutingDeepLinkPrefix for subscription headers.
@@ -21,6 +22,8 @@ func routingDeepLinkPrefixForProfile(p *SharxSubpageRoutingProfile) string {
 	}
 	preset := strings.ToLower(strings.TrimSpace(p.DeepLinkPreset))
 	switch preset {
+	case "happ_onadd":
+		return happRoutingOnAddPrefix
 	case "incy":
 		return incyRoutingAddPrefix
 	case "sharx":
@@ -168,7 +171,8 @@ func NormalizeSubscriptionRoutingHeaderValue(v string) string {
 		return v
 	}
 	lower := strings.ToLower(v)
-	if strings.Contains(lower, "://routing/add/") {
+	if strings.Contains(lower, "://routing/add/") ||
+		strings.Contains(lower, "://routing/onadd/") {
 		return v
 	}
 
