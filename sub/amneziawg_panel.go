@@ -40,7 +40,9 @@ func (s *SubService) buildAmneziaWgPanelInfo(inbound *model.Inbound, clientEmail
 	}
 
 	var b strings.Builder
-	b.WriteString("AmneziaWG (UDP) — use the .conf block below in the AmneziaWG app (not a v2ray:// link).\n\n")
+	b.WriteString("AmneziaWG (UDP) — use the .conf block below in the AmneziaWG app (not a v2ray:// link).\n")
+	appendWireguardInboundLine(&b, inbound)
+	b.WriteString("\n")
 
 	addrs, _ := s.getAddressesForInbound(inbound)
 	var firstEndpoint string

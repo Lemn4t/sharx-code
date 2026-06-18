@@ -49,6 +49,7 @@ import { panel } from "@/lib/paths";
 import {
   isWgQuickConfProtocol,
   wgQuickConfFromPanelText,
+  wireGuardConfFileName,
 } from "@/lib/wireguardConf";
 import { getUiPref, setUiPref } from "@/lib/uiPrefs";
 import { CompareModeFilterField, type CompareOp } from "@/components/CompareModeFilterField";
@@ -4566,7 +4567,9 @@ export function ClientsPage() {
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement("a");
                         a.href = url;
-                        a.download = `${keysModalClient?.name || "client"}.conf`;
+                        a.download = wireGuardConfFileName(
+                          row.remark?.trim() || `inbound-${row.inboundId}`,
+                        );
                         a.click();
                         URL.revokeObjectURL(url);
                       }}

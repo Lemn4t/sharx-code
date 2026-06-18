@@ -5,8 +5,11 @@ import {
   hasWireGuardSubscription,
   isWgQuickConfProtocol,
   isWireGuardOnlySubscription,
+  listWireGuardConfsFromLinks,
   reconstructWireGuardConfFromLinks,
   wgQuickConfFromPanelText,
+  wireGuardConfFileName,
+  wireGuardConfLabelFromPanelText,
 } from "./wireguardConf";
 
 const SAMPLE_PANEL =
@@ -72,7 +75,7 @@ describe("wireguardConf", () => {
 
   it("detects awg-only subscription with obfuscation lines", () => {
     const awgPanel =
-      "AmneziaWG (UDP) — notes\n\n" +
+      "AmneziaWG (UDP) — notes\nInbound: AWG-DE\n\n" +
       "[Interface]\n" +
       "PrivateKey = abc=\n" +
       "Jc = 4\n" +
@@ -83,5 +86,18 @@ describe("wireguardConf", () => {
     const lines = awgPanel.split("\n").map((l) => l.trim()).filter(Boolean);
     expect(isWireGuardOnlySubscription(lines)).toBe(true);
     expect(firstWireGuardConfFromLinks(lines)).toContain("Jc = 4");
+  });
+
+  it("uses Inbound line for conf file name, not boilerplate header", () => {
+    const panel =
+      "AmneziaWG (UDP) — use the .conf block below in the AmneziaWG app (not a v2ray:// link).\n" +
+      "Inbound: DE Frankfurt\n\n" +
+      "[Interface]\nPrivateKey = abc=\n\n[Peer]\nPublicKey = xyz=\n";
+    expect(wireGuardConfLabelFromPanelText(panel)).toBe("DE Frankfurt");
+    expect(wireGuardConfFileName("DE Frankfurt")).toBe("DE-Frankfurt.conf");
+    const entries = listWireGuardConfsFromLinks([panel]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.fileName).toBe("DE-Frankfurt.conf");
+    expect(entries[0]?.label).toBe("DE Frankfurt");
   });
 });

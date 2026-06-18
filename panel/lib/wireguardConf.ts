@@ -73,20 +73,39 @@ export function firstWireGuardConfFromLinks(links: string[]): string | null {
 function sanitizeConfFileStem(label: string): string {
   const stem = label
     .trim()
-    .replace(/[^\w.-]+/g, "-")
+    .replace(/[^\w.\- \u0400-\u04FF]+/g, "-")
+    .replace(/\s+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-  return stem || "amnezia";
+    .slice(0, 48);
+  return stem || "wireguard";
 }
 
-/** Human label from panel WireGuard / AmneziaWG subscription text. */
+/** Safe download filename for a wg-quick .conf (inbound remark). */
+export function wireGuardConfFileName(label: string): string {
+  return `${sanitizeConfFileStem(label)}.conf`;
+}
+
+function isBoilerplateWgHeaderSuffix(suffix: string): boolean {
+  const lower = suffix.toLowerCase();
+  return (
+    lower.includes("v2ray") ||
+    lower.includes(".conf block") ||
+    lower.includes("use the data below") ||
+    lower.includes("use the .conf")
+  );
+}
+
+/** Human label from panel WireGuard / AmneziaWG subscription text (prefers `Inbound:` line). */
 export function wireGuardConfLabelFromPanelText(text: string): string | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
-  const header = trimmed.match(/^(?:WireGuard|AmneziaWG)\s*\(UDP\)\s*(?:—|-)\s*(.+?)(?:\n|$)/i);
-  if (header?.[1]?.trim()) return header[1].trim();
-  const endpoint = trimmed.match(/^Endpoint:\s*(.+?)(?:\n|$)/im);
-  if (endpoint?.[1]?.trim()) return endpoint[1].trim();
+  const inboundLine = trimmed.match(/^Inbound:\s*(.+?)(?:\r?\n|$)/im);
+  if (inboundLine?.[1]?.trim()) return inboundLine[1].trim();
+  const header = trimmed.match(/^(?:WireGuard|AmneziaWG)\s*\(UDP\)\s*(?:—|-)\s*(.+?)(?:\r?\n|$)/i);
+  if (header?.[1]?.trim()) {
+    const suffix = header[1].trim();
+    if (!isBoilerplateWgHeaderSuffix(suffix)) return suffix;
+  }
   if (/^AmneziaWG/i.test(trimmed)) return "AmneziaWG";
   if (/^WireGuard/i.test(trimmed)) return "WireGuard";
   return null;
@@ -112,7 +131,7 @@ export function listWireGuardConfsFromLinks(links: string[]): WireGuardConfEntry
     out.push({
       conf,
       label,
-      fileName: `${sanitizeConfFileStem(label)}.conf`,
+      fileName: wireGuardConfFileName(label),
     });
   }
   return out;
@@ -131,6 +150,7 @@ function isWireGuardPanelMetadataLine(line: string): boolean {
   if (
     t.startsWith("WireGuard (UDP)") ||
     t.startsWith("AmneziaWG (UDP)") ||
+    t.startsWith("Inbound:") ||
     t.startsWith("Endpoint:") ||
     t.startsWith("MTU:") ||
     t.startsWith("noKernelTun:") ||

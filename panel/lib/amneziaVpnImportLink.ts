@@ -6,6 +6,7 @@
 
 import {
   listWireGuardConfsFromLinks,
+  wireGuardConfFileName,
   wireGuardConfLabelFromPanelText,
   wgQuickConfFromPanelText,
 } from "./wireguardConf";
@@ -54,7 +55,7 @@ export function listAmneziaVpnImportItems(links: string[]): AmneziaVpnImportItem
       kind: "conf",
       conf,
       label,
-      fileName: entry?.fileName ?? "amnezia.conf",
+      fileName: entry?.fileName ?? wireGuardConfFileName(label),
     });
   }
 

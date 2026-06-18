@@ -3,7 +3,23 @@ package sub
 import (
 	"strings"
 	"testing"
+
+	"github.com/konstpic/sharx-code/v2/database/model"
 )
+
+func TestWireguardInboundLabel(t *testing.T) {
+	if got := wireguardInboundLabel(&model.Inbound{Id: 3, Remark: "DE Frankfurt"}); got != "DE Frankfurt" {
+		t.Fatalf("remark: got %q", got)
+	}
+	if got := wireguardInboundLabel(&model.Inbound{Id: 5, Remark: "  "}); got != "inbound-5" {
+		t.Fatalf("fallback id: got %q", got)
+	}
+	var b strings.Builder
+	appendWireguardInboundLine(&b, &model.Inbound{Remark: "Node-A"})
+	if b.String() != "Inbound: Node-A\n" {
+		t.Fatalf("inbound line: got %q", b.String())
+	}
+}
 
 func TestWireguardConfBlockFromPanelInfo_withClientDNS(t *testing.T) {
 	// Regression: when clientDns is set, the old hint line contained "[Interface]" mid-line

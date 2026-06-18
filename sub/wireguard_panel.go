@@ -122,6 +122,24 @@ func findWireguardPeerForClientActiveOrInactive(settings map[string]any, clientN
 	return findWireguardPeerForClient(inactive, clientName)
 }
 
+// wireguardInboundLabel is the inbound remark used for .conf export labels (subscription + panel).
+func wireguardInboundLabel(inbound *model.Inbound) string {
+	if inbound == nil {
+		return "wireguard"
+	}
+	if r := strings.TrimSpace(inbound.Remark); r != "" {
+		return r
+	}
+	if inbound.Id > 0 {
+		return fmt.Sprintf("inbound-%d", inbound.Id)
+	}
+	return "wireguard"
+}
+
+func appendWireguardInboundLine(b *strings.Builder, inbound *model.Inbound) {
+	b.WriteString("Inbound: " + wireguardInboundLabel(inbound) + "\n")
+}
+
 // buildWireguardPanelInfo returns text for the panel "View connection keys" modal (not a v2ray:// URL).
 // clientName matches a server peer with "name" / "clientName" / "email" / "clientEmail" in settings JSON.
 func (s *SubService) buildWireguardPanelInfo(inbound *model.Inbound, clientEmail string) string {
@@ -135,7 +153,9 @@ func (s *SubService) buildWireguardPanelInfo(inbound *model.Inbound, clientEmail
 	}
 
 	var b strings.Builder
-	b.WriteString("WireGuard (UDP) — this is not a v2ray:// link; use the data below in a WireGuard app.\n\n")
+	b.WriteString("WireGuard (UDP) — this is not a v2ray:// link; use the data below in a WireGuard app.\n")
+	appendWireguardInboundLine(&b, inbound)
+	b.WriteString("\n")
 
 	addrs, _ := s.getAddressesForInbound(inbound)
 	var firstEndpoint string

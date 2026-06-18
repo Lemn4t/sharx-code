@@ -10,7 +10,9 @@ import {
 describe("listAmneziaVpnImportItems", () => {
   it("returns protocol keys and wg conf blocks in subscription order", () => {
     const awg =
-      "AmneziaWG (UDP) — Node-A\n\n[Interface]\nPrivateKey = x\n\n[Peer]\nPublicKey = y\n";
+      "AmneziaWG (UDP) — use the .conf block below in the AmneziaWG app (not a v2ray:// link).\n" +
+      "Inbound: Node-A\n\n" +
+      "[Interface]\nPrivateKey = x\n\n[Peer]\nPublicKey = y\n";
     const links = [
       awg,
       "vless://uuid@a.com:443?security=tls#Node-A",

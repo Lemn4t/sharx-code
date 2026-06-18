@@ -17,7 +17,7 @@ import {
   type SubscriptionApp,
   type SupportedPlatform,
 } from "@/lib/sharxSubpageConfig";
-import { firstWireGuardConfFromLinks, listWireGuardConfsFromLinks } from "@/lib/wireguardConf";
+import { firstWireGuardConfFromLinks, listWireGuardConfsFromLinks, wireGuardConfFileName } from "@/lib/wireguardConf";
 import { downloadTextFile } from "@/lib/downloadTextFile";
 import {
   amneziaVpnKeyDisplayLabel,
@@ -777,7 +777,7 @@ function SelectedAppDetail(props: DetailProps) {
       isAmneziaWg && wireguardConf
         ? {
             content: wireguardConf,
-            fileName: listWireGuardConfsFromLinks(links)[0]?.fileName ?? "amnezia.conf",
+            fileName: listWireGuardConfsFromLinks(links)[0]?.fileName ?? wireGuardConfFileName("AmneziaWG"),
           }
         : undefined,
   });
