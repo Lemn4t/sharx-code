@@ -1083,27 +1083,23 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 	logger.Debugf("UpdateInbound: inboundId=%d tag=%s multiMode=%v onlySettingsChanged=%v settingsMatchDB=%v useFastAPI=%v structureUnchanged=%v",
 		inbound.Id, tag, multiMode, onlySettingsChanged, settingsMatchDB, useFastAPI, structureUnchanged)
 
+	var (
+		nodesForFastPush []*model.Node
+		inboundJSONFast  []byte
+		doLocalFastAPI   bool
+	)
+
 	if useFastAPI {
-		// Fast path: Use API to update inbound (instant, no restart)
+		// Fast path: push via Xray API after DB commit (instant, no restart).
 		if multiMode {
-			// Multi-node mode: update on all nodes assigned to this inbound
 			nodeService := NodeService{}
 			nodes, err := nodeService.GetNodesForInbound(inbound.Id)
 			if err == nil && len(nodes) > 0 && inbound.Enable {
-				// Generate new config with updated Settings
 				inboundJson, err2 := marshalInboundJSONForXray(oldInbound)
 				if err2 == nil {
-					// Update inbound on all nodes via API (async, non-blocking)
-					for _, node := range nodes {
-						go func(n *model.Node) {
-							if err := nodeService.UpdateInboundOnNode(n, inboundJson); err != nil {
-								logger.Warningf("Failed to update inbound %s on node %s via API: %v", tag, n.Name, err)
-							} else {
-								logger.Infof("Updated inbound %s on node %s via API (instant)", tag, n.Name)
-							}
-						}(node)
-					}
-					logger.Debugf("UpdateInbound: using fast API update for inbound %s on %d node(s)", tag, len(nodes))
+					nodesForFastPush = nodes
+					inboundJSONFast = inboundJson
+					logger.Debugf("UpdateInbound: queued fast API update for inbound %s on %d node(s) after DB commit", tag, len(nodes))
 				} else {
 					logger.Debugf("Unable to marshal inbound config for API update: %v", err2)
 					needRestart = true
@@ -1112,42 +1108,7 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 				logger.Debugf("UpdateInbound: multiMode fast path skipped: err=%v nodesCount=%d inboundEnable=%v", err, len(nodes), inbound.Enable)
 			}
 		} else if p != nil {
-			// Single mode: update local Xray via API
-			apiPort := p.GetAPIPort()
-			api, err := s.getXrayAPI(apiPort)
-			if err == nil {
-				// Always delete old inbound first to ensure clean state
-				if api.DelInbound(tag) == nil {
-					logger.Debug("Old inbound deleted by api:", tag)
-				} else {
-					logger.Debug("Failed to delete old inbound by api (may not exist):", tag)
-					// Continue anyway - inbound might not exist yet
-				}
-
-				if inbound.Enable {
-					// Generate new config with updated Settings (which excludes disabled clients)
-					inboundJson, err2 := marshalInboundJSONForXray(oldInbound)
-					if err2 != nil {
-						logger.Debug("Unable to marshal updated inbound config:", err2)
-						needRestart = true
-					} else {
-						// Add new inbound with updated config (disabled clients are already excluded from Settings)
-						err2 = api.AddInbound(inboundJson)
-						if err2 == nil {
-							logger.Debug("Updated inbound added by api:", oldInbound.Tag)
-						} else {
-							logger.Debug("Unable to update inbound by api:", err2)
-							needRestart = true
-						}
-					}
-				} else {
-					// Inbound is disabled - it's already deleted, nothing to add
-					logger.Debug("Inbound is disabled, not adding to Xray:", tag)
-				}
-			} else {
-				logger.Debug("Failed to get XrayAPI connection:", err)
-				needRestart = true
-			}
+			doLocalFastAPI = inbound.Enable
 		}
 	} else {
 		// Slow path: Full config reload needed (port/protocol/streamSettings changed)
@@ -1170,6 +1131,57 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 	// #region agent log
 	logger.Debugf("[DEBUG-AGENT] UpdateInbound: after transaction, inboundId=%d, error=%v", inbound.Id, err)
 	// #endregion
+
+	if err == nil && useFastAPI {
+		if len(nodesForFastPush) > 0 && inboundJSONFast != nil {
+			nodeService := NodeService{}
+			for _, node := range nodesForFastPush {
+				if pushErr := nodeService.UpdateInboundOnNodeWithFallback(node, inboundJSONFast); pushErr != nil {
+					logger.Warningf("Failed to update inbound %s on node %s via API: %v", tag, node.Name, pushErr)
+					needRestart = true
+				} else {
+					logger.Infof("Updated inbound %s on node %s via API (instant)", tag, node.Name)
+				}
+			}
+		}
+		if doLocalFastAPI && p != nil {
+			apiPort := p.GetAPIPort()
+			api, apiErr := s.getXrayAPI(apiPort)
+			if apiErr == nil {
+				if api.DelInbound(tag) == nil {
+					logger.Debug("Old inbound deleted by api:", tag)
+				} else {
+					logger.Debug("Failed to delete old inbound by api (may not exist):", tag)
+				}
+				inboundJson, err2 := marshalInboundJSONForXray(oldInbound)
+				if err2 != nil {
+					logger.Debug("Unable to marshal updated inbound config:", err2)
+					needRestart = true
+				} else if err2 = api.AddInbound(inboundJson); err2 == nil {
+					logger.Debug("Updated inbound added by api:", oldInbound.Tag)
+				} else {
+					logger.Debug("Unable to update inbound by api:", err2)
+					needRestart = true
+				}
+			} else {
+				logger.Debug("Failed to get XrayAPI connection:", apiErr)
+				needRestart = true
+			}
+		} else if useFastAPI && !multiMode && p != nil && !inbound.Enable {
+			apiPort := p.GetAPIPort()
+			api, apiErr := s.getXrayAPI(apiPort)
+			if apiErr == nil {
+				if api.DelInbound(tag) == nil {
+					logger.Debug("Old inbound deleted by api:", tag)
+				} else {
+					logger.Debug("Failed to delete old inbound by api (may not exist):", tag)
+				}
+			} else {
+				logger.Debug("Failed to get XrayAPI connection:", apiErr)
+				needRestart = true
+			}
+		}
+	}
 
 	if err == nil {
 		// #region agent log

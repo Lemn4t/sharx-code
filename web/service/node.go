@@ -2516,25 +2516,7 @@ func (s *NodeService) syncInboundAssignmentToNodes(inboundId int, oldNodeIds, ne
 					recordErr(fmt.Errorf("load node %d for inbound apply: %w", nid, err))
 					return
 				}
-				if err := s.UpdateInboundOnNode(node, inboundJSON); err != nil {
-					// If worker Xray is not running yet, fallback to full apply-config once to start it.
-					if strings.Contains(strings.ToLower(err.Error()), "xray is not running") {
-						xs := NewXrayService()
-						cfgJSON, coreH, cfgErr := xs.BuildWorkerXrayConfigForNodeWithMeta(node)
-						if cfgErr != nil {
-							recordErr(fmt.Errorf("build full worker config for node %s fallback: %w", node.Name, cfgErr))
-							return
-						}
-						ibs, _ := xs.InboundsForWorkerNode(node)
-						telm, awg, _ := BuildWorkerSidecarPayloadsForNode(node, ibs)
-						meta := NewApplyWorkerConfigMeta(cfgJSON, coreH)
-						if apErr := s.ApplyConfigToNode(node, cfgJSON, &telm, &awg, meta); apErr != nil {
-							recordErr(fmt.Errorf("fallback apply-config to node %s: %w", node.Name, apErr))
-							return
-						}
-						logger.Infof("[Node: %s] Inbound %s applied via fallback apply-config (xray was stopped)", node.Name, inbound.Tag)
-						return
-					}
+				if err := s.UpdateInboundOnNodeWithFallback(node, inboundJSON); err != nil {
 					recordErr(fmt.Errorf("apply inbound %s to node %s: %w", inbound.Tag, node.Name, err))
 					return
 				}
@@ -2975,6 +2957,50 @@ func (s *NodeService) RemoveUserFromNode(node *model.Node, inboundTag, email str
 	}
 
 	logger.Infof("[Node: %s] User removed successfully via API: %s from inbound %s", node.Name, email, inboundTag)
+	return nil
+}
+
+// applyFullWorkerConfigToNode pushes the full Xray + sidecar payload (apply-config).
+func (s *NodeService) applyFullWorkerConfigToNode(node *model.Node) error {
+	xs := NewXrayService()
+	cfgJSON, coreH, cfgErr := xs.BuildWorkerXrayConfigForNodeWithMeta(node)
+	if cfgErr != nil {
+		return fmt.Errorf("build full worker config: %w", cfgErr)
+	}
+	ibs, _ := xs.InboundsForWorkerNode(node)
+	telm, awg, _ := BuildWorkerSidecarPayloadsForNode(node, ibs)
+	meta := NewApplyWorkerConfigMeta(cfgJSON, coreH)
+	if apErr := s.ApplyConfigToNode(node, cfgJSON, &telm, &awg, meta); apErr != nil {
+		return apErr
+	}
+	logger.Infof("[Node: %s] Full worker config applied via apply-config", node.Name)
+	return nil
+}
+
+func inboundAPIFailureWarrantsFullConfigFallback(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "wire-format") ||
+		strings.Contains(msg, "failed to add updated inbound") ||
+		strings.Contains(msg, "status 500") ||
+		strings.Contains(msg, "xray is not running")
+}
+
+// UpdateInboundOnNodeWithFallback updates one inbound via API; on hard failure applies full worker config.
+func (s *NodeService) UpdateInboundOnNodeWithFallback(node *model.Node, inboundConfig []byte) error {
+	err := s.UpdateInboundOnNode(node, inboundConfig)
+	if err == nil {
+		return nil
+	}
+	if !inboundAPIFailureWarrantsFullConfigFallback(err) {
+		return err
+	}
+	logger.Warningf("[Node: %s] update-inbound failed (%v), falling back to apply-config", node.Name, err)
+	if fbErr := s.applyFullWorkerConfigToNode(node); fbErr != nil {
+		return fmt.Errorf("update-inbound failed: %w; apply-config fallback failed: %v", err, fbErr)
+	}
 	return nil
 }
 

@@ -975,8 +975,25 @@ func (m *Manager) UpdateInbound(inboundConfig []byte) error {
 		logger.Debugf("Failed to delete old inbound %s (may not exist): %v", tag, err)
 	}
 
+	var prevInboundJSON []byte
+	if m.config != nil {
+		for _, ic := range m.config.InboundConfigs {
+			if ic.Tag == tag {
+				prevInboundJSON, _ = json.Marshal(&ic)
+				break
+			}
+		}
+	}
+
 	// Add updated inbound
 	if err := xrayAPI.AddInbound(inboundConfig); err != nil {
+		if len(prevInboundJSON) > 0 {
+			if rollbackErr := xrayAPI.AddInbound(prevInboundJSON); rollbackErr != nil {
+				logger.Errorf("Failed to rollback inbound %s after update error: %v (original: %v)", tag, rollbackErr, err)
+			} else {
+				logger.Warningf("Rolled back inbound %s to previous config after failed update: %v", tag, err)
+			}
+		}
 		return fmt.Errorf("failed to add updated inbound: %w", err)
 	}
 

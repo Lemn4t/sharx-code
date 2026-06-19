@@ -78,6 +78,10 @@ func (s *ClientService) isClientUUIDTaken(userId int, u string, excludeId int) (
 	return count > 0, nil
 }
 
+func clientHasExpiredStatus(status string) bool {
+	return status == "expired_traffic" || status == "expired_time"
+}
+
 // GetClients retrieves all clients for a specific user.
 // Also loads traffic statistics and last online time for each client.
 // NOTE: No caching - data should be real-time (traffic, HWID, online status change frequently).
@@ -126,62 +130,7 @@ func (s *ClientService) GetClients(userId int) ([]*model.ClientEntity, error) {
 				if tgbotService.IsRunning() {
 					tgbotService.NotifyClientStateChanged(&oldClientForNotify, client)
 				}
-				// Remove expired client from Xray API if it's enabled and just expired (both local and nodes)
-				if client.Enable {
-					settingService := SettingService{}
-					multiMode, _ := settingService.GetMultiNodeMode()
-					nodeService := NodeService{}
-					inboundService := InboundService{}
-
-					// Get all inbound IDs for this client
-					clientInboundIds, err := s.GetInboundIdsForClient(client.Id)
-					if err == nil {
-						for _, inboundId := range clientInboundIds {
-							inbound, err := inboundService.GetInbound(inboundId)
-							if err != nil {
-								continue
-							}
-
-							if multiMode {
-								// Multi-node mode: remove from all nodes assigned to this inbound
-								nodes, err := nodeService.GetNodesForInbound(inboundId)
-								if err == nil {
-									for _, node := range nodes {
-										go func(n *model.Node) {
-											if err := nodeService.RemoveUserFromNode(n, inbound.Tag, client.Name); err != nil {
-												logger.Warningf("GetClients: failed to remove expired client %s from node %s via API: %v", client.Name, n.Name, err)
-											} else {
-												logger.Infof("GetClients: removed expired client %s from node %s via API (instant)", client.Name, n.Name)
-											}
-										}(node)
-									}
-								}
-							} else {
-								// Single mode: instantly update config.json and restart
-								if p != nil && p.IsRunning() {
-									processConfig := p.GetConfig()
-									if processConfig != nil {
-										// Instantly remove client from config.json
-										if err := xray.UpdateConfigFileAfterUserRemoval(processConfig, inbound.Tag, client.Name); err != nil {
-											logger.Warningf("GetClients: failed to instantly remove expired client %s from config.json: %v", client.Name, err)
-										} else {
-											logger.Infof("GetClients: instantly removed expired client %s from config.json (inbound: %s)", client.Name, inbound.Tag)
-											// Schedule async restart to apply changes
-											xrayService := XrayService{}
-											go func() {
-												if err := xrayService.RestartXray(false); err != nil {
-													logger.Warningf("GetClients: failed to restart Xray after removing expired client: %v", err)
-												} else {
-													logger.Debugf("GetClients: Xray restarted successfully after removing expired client (config synced)")
-												}
-											}()
-										}
-									}
-								}
-							}
-						}
-					}
-				}
+				// Xray/node sync is handled by XrayTrafficJob → DisableClientsByName (inbound rebuild).
 			}
 		}
 
@@ -851,7 +800,7 @@ func (s *ClientService) UpdateClient(userId int, client *model.ClientEntity) (bo
 			logger.Debugf("UpdateClient: skipping inbound/Xray sync (metadata-only change), clientId=%d", client.Id)
 			return
 		}
-		wasExpired := existing.Status == "expired_traffic" || existing.Status == "expired_time"
+		wasExpired := clientHasExpiredStatus(existing.Status)
 
 		// Check if client is no longer expired (by traffic or time)
 		now := time.Now().Unix() * 1000
@@ -862,6 +811,14 @@ func (s *ClientService) UpdateClient(userId int, client *model.ClientEntity) (bo
 		nowActive := (!trafficExceeded && !timeExpired) && (finalClient.Status == "active" || finalClient.Status == "")
 
 		needsReAdd := wasExpired && nowActive && finalClient.Enable
+
+		// External billing often sends enable=false after the panel expiry job already rebuilt inbounds.
+		if wasExpired && enableChanged && !finalClient.Enable && !needsReAdd && !inboundAssignmentsChanged &&
+			existing.UUID == finalClient.UUID && existing.Password == finalClient.Password &&
+			existing.Security == finalClient.Security && strings.EqualFold(existing.Name, finalClient.Name) {
+			logger.Debugf("UpdateClient: skipping inbound sync (redundant disable of already-expired client %d)", client.Id)
+			return
+		}
 
 		// Instant config update + async restart approach (no API needed)
 		// 1. Update config.json instantly (add/remove client from Settings)
@@ -1452,78 +1409,10 @@ func (s *ClientService) DisableClientsByName(clientsToDisable map[string]string,
 		return false, nil
 	}
 
-	logger.Infof("DisableClientsByName: removing %d expired clients from Xray", len(clientsToDisable))
+	logger.Infof("DisableClientsByName: syncing %d expired client(s) via inbound rebuild", len(clientsToDisable))
 
 	db := database.GetDB()
 	needRestart := false
-	settingService := SettingService{}
-	multiMode, _ := settingService.GetMultiNodeMode()
-	nodeService := NodeService{}
-
-	// Group clients by tag and inbound ID for better processing
-	// Build map: email -> inbound info (tag, inboundId)
-	emailToInbound := make(map[string]struct {
-		tag       string
-		inboundId int
-	})
-
-	for email, tag := range clientsToDisable {
-		// Find inbound by tag to get inboundId
-		var inbound model.Inbound
-		if err := db.Where("tag = ?", tag).First(&inbound).Error; err == nil {
-			emailToInbound[email] = struct {
-				tag       string
-				inboundId int
-			}{tag: tag, inboundId: inbound.Id}
-		} else {
-			logger.Warningf("DisableClientsByName: failed to find inbound with tag %s for client %s: %v", tag, email, err)
-			// Still try to remove with just tag
-			emailToInbound[email] = struct {
-				tag       string
-				inboundId int
-			}{tag: tag, inboundId: 0}
-		}
-	}
-
-	// Remove from Xray API (both local and nodes)
-	// Group by mode to optimize API calls
-	if multiMode {
-		// Multi-node mode: remove from all nodes
-		for email, inboundInfo := range emailToInbound {
-			if inboundInfo.inboundId > 0 {
-				nodes, err := nodeService.GetNodesForInbound(inboundInfo.inboundId)
-				if err == nil {
-					for _, node := range nodes {
-						go func(n *model.Node, tag string, email string) {
-							if err := nodeService.RemoveUserFromNode(n, tag, email); err != nil {
-								logger.Warningf("DisableClientsByName: failed to remove expired client %s from node %s via API: %v", email, n.Name, err)
-							} else {
-								logger.Infof("DisableClientsByName: removed expired client %s from node %s via API (instant)", email, n.Name)
-							}
-						}(node, inboundInfo.tag, email)
-					}
-				}
-			}
-		}
-	} else {
-		// Single mode: instantly update config.json and restart
-		xrayService := XrayService{}
-		if xrayService.IsXrayRunning() {
-			processConfig := xrayService.GetConfig()
-			if processConfig != nil {
-				for email, inboundInfo := range emailToInbound {
-					// Instantly remove client from config.json
-					if err := xray.UpdateConfigFileAfterUserRemoval(processConfig, inboundInfo.tag, email); err != nil {
-						logger.Warningf("DisableClientsByName: failed to instantly remove client %s from config.json: %v", email, err)
-						needRestart = true
-					} else {
-						logger.Infof("DisableClientsByName: instantly removed client %s from config.json (inbound: %s)", email, inboundInfo.tag)
-						needRestart = true
-					}
-				}
-			}
-		}
-	}
 
 	// Update client status in database (but keep Enable = true)
 	emails := make([]string, 0, len(clientsToDisable))
