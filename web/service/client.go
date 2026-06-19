@@ -2,7 +2,6 @@
 package service
 
 import (
-	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
@@ -55,6 +54,13 @@ func (s *ClientService) ensurePasswordForSecretInbounds(password string, inbound
 		inb, err := inboundSvc.GetInbound(id)
 		if err != nil || inb == nil {
 			continue
+		}
+		if model.NormalizeProtocol(inb.Protocol) == model.Shadowsocks {
+			method := ShadowsocksMethodFromSettings(inb.Settings)
+			if newPass, err := RandomShadowsocksUserPassword(method); err == nil {
+				return newPass
+			}
+			return random.Seq(32)
 		}
 		if inboundProtocolUsesClientSecret(inb.Protocol) {
 			return random.Seq(32)
@@ -234,11 +240,8 @@ func (s *ClientService) xrayUserPayloadForInbound(client *model.ClientEntity, in
 	case model.Hysteria, model.Hysteria2:
 		clientData["auth"] = client.Password
 	case model.Shadowsocks:
-		var settings map[string]interface{}
-		json.Unmarshal([]byte(inbound.Settings), &settings)
-		if method, ok := settings["method"].(string); ok {
-			// Xray gRPC AddUser payload uses "cipher" key (not "method").
-			clientData["cipher"] = method
+		if cipher := ShadowsocksCipherForAddUser(inbound.Settings); cipher != "" {
+			clientData["cipher"] = cipher
 		}
 		clientData["password"] = client.Password
 	case model.VMESS, model.VLESS:
@@ -879,10 +882,8 @@ func (s *ClientService) UpdateClient(userId int, client *model.ClientEntity) (bo
 							case model.Hysteria, model.Hysteria2:
 								clientData["auth"] = finalClient.Password
 							case model.Shadowsocks:
-								var settings map[string]interface{}
-								json.Unmarshal([]byte(inbound.Settings), &settings)
-								if method, ok := settings["method"].(string); ok {
-									clientData["cipher"] = method
+								if cipher := ShadowsocksCipherForAddUser(inbound.Settings); cipher != "" {
+									clientData["cipher"] = cipher
 								}
 								clientData["password"] = finalClient.Password
 							case model.VMESS, model.VLESS:
@@ -1557,16 +1558,6 @@ func (s *ClientService) ResetAllClientTraffics(userId int) (bool, error) {
 					continue
 				}
 
-				// Get method for shadowsocks
-				var method string
-				if inbound.Protocol == model.Shadowsocks {
-					var settings map[string]any
-					json.Unmarshal([]byte(inbound.Settings), &settings)
-					if m, ok := settings["method"].(string); ok {
-						method = m
-					}
-				}
-
 				for _, client := range clients {
 					// Build client data for Xray API
 					clientData := make(map[string]any)
@@ -1589,8 +1580,8 @@ func (s *ClientService) ResetAllClientTraffics(userId int) (bool, error) {
 					case model.Hysteria, model.Hysteria2:
 						clientData["auth"] = client.Password
 					case model.Shadowsocks:
-						if method != "" {
-							clientData["cipher"] = method
+						if cipher := ShadowsocksCipherForAddUser(inbound.Settings); cipher != "" {
+							clientData["cipher"] = cipher
 						}
 						clientData["password"] = client.Password
 					case model.VMESS, model.VLESS:
@@ -1729,10 +1720,8 @@ func (s *ClientService) ResetClientTraffic(userId int, clientId int) (bool, erro
 					case model.Hysteria, model.Hysteria2:
 						clientData["auth"] = client.Password
 					case model.Shadowsocks:
-						var settings map[string]any
-						json.Unmarshal([]byte(inbound.Settings), &settings)
-						if method, ok := settings["method"].(string); ok {
-							clientData["cipher"] = method
+						if cipher := ShadowsocksCipherForAddUser(inbound.Settings); cipher != "" {
+							clientData["cipher"] = cipher
 						}
 						clientData["password"] = client.Password
 					case model.VMESS, model.VLESS:
@@ -2097,10 +2086,8 @@ func (s *ClientService) BulkResetTraffic(userId int, clientIds []int) (bool, err
 					case model.Hysteria, model.Hysteria2:
 						clientData["auth"] = client.Password
 					case model.Shadowsocks:
-						var settings map[string]any
-						json.Unmarshal([]byte(inbound.Settings), &settings)
-						if method, ok := settings["method"].(string); ok {
-							clientData["cipher"] = method
+						if cipher := ShadowsocksCipherForAddUser(inbound.Settings); cipher != "" {
+							clientData["cipher"] = cipher
 						}
 						clientData["password"] = client.Password
 					case model.VMESS, model.VLESS:
@@ -2377,10 +2364,8 @@ func (s *ClientService) BulkEnable(userId int, clientIds []int, enable bool) (bo
 						case model.Hysteria, model.Hysteria2:
 							clientData["auth"] = client.Password
 						case model.Shadowsocks:
-							var settings map[string]interface{}
-							json.Unmarshal([]byte(inbound.Settings), &settings)
-							if method, ok := settings["method"].(string); ok {
-								clientData["cipher"] = method
+							if cipher := ShadowsocksCipherForAddUser(inbound.Settings); cipher != "" {
+								clientData["cipher"] = cipher
 							}
 							clientData["password"] = client.Password
 						case model.VMESS, model.VLESS:

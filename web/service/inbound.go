@@ -444,9 +444,8 @@ func (s *InboundService) BuildSettingsFromClientEntities(inbound *model.Inbound,
 			// Explicit level 0 matches default Xray hysteria user; ensures policy.levels["0"] stats apply.
 			client["level"] = 0
 		case model.Shadowsocks:
-			// For Shadowsocks, we need to get method from settings
 			if method, ok := settings["method"].(string); ok {
-				client["method"] = method
+				ApplyShadowsocksClientFields(method, client)
 			}
 			client["password"] = entity.Password
 		case model.VMESS, model.VLESS:
@@ -469,7 +468,9 @@ func (s *InboundService) BuildSettingsFromClientEntities(inbound *model.Inbound,
 	if err != nil {
 		return "", err
 	}
-
+	if proto == model.Shadowsocks {
+		return SanitizeShadowsocksInboundSettings(string(settingsJSON))
+	}
 	return string(settingsJSON), nil
 }
 
@@ -484,6 +485,64 @@ func (s *InboundService) getAllEmails() ([]string, error) {
 	}
 
 	return emails, nil
+}
+
+// syncShadowsocksMethodChange regenerates client secrets when inbound cipher changes.
+func (s *InboundService) syncShadowsocksMethodChange(inbound *model.Inbound, oldSettingsJSON string) error {
+	if inbound == nil {
+		return nil
+	}
+	oldMethod := ShadowsocksMethodFromSettings(oldSettingsJSON)
+	newMethod := ShadowsocksMethodFromSettings(inbound.Settings)
+	if oldMethod == newMethod {
+		return nil
+	}
+	if newMethod == "" {
+		return nil
+	}
+
+	clientSvc := ClientService{}
+	clients, err := clientSvc.GetClientsForInbound(inbound.Id)
+	if err != nil {
+		return err
+	}
+	db := database.GetDB()
+	for _, c := range clients {
+		if c == nil {
+			continue
+		}
+		newPass, err := RandomShadowsocksUserPassword(newMethod)
+		if err != nil {
+			return err
+		}
+		if err := db.Model(&model.ClientEntity{}).Where("id = ?", c.Id).Update("password", newPass).Error; err != nil {
+			return err
+		}
+		c.Password = newPass
+	}
+
+	var preserve map[string]any
+	_ = json.Unmarshal([]byte(inbound.Settings), &preserve)
+	rebuilt, err := s.BuildSettingsFromClientEntities(inbound, clients)
+	if err != nil {
+		return err
+	}
+	if pw, ok := preserve["password"].(string); ok && strings.TrimSpace(pw) != "" {
+		var root map[string]any
+		if err := json.Unmarshal([]byte(rebuilt), &root); err == nil && root != nil {
+			root["password"] = strings.TrimSpace(pw)
+			root["method"] = newMethod
+			if b, err := json.MarshalIndent(root, "", "  "); err == nil {
+				rebuilt = string(b)
+			}
+		}
+	}
+	sanitized, err := SanitizeShadowsocksInboundSettings(rebuilt)
+	if err != nil {
+		return err
+	}
+	inbound.Settings = sanitized
+	return nil
 }
 
 func (s *InboundService) contains(slice []string, str string) bool {
@@ -1036,6 +1095,17 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 	oldInbound.Settings = inbound.Settings
 	oldInbound.StreamSettings = inbound.StreamSettings
 	oldInbound.Sniffing = inbound.Sniffing
+	if model.NormalizeProtocol(inbound.Protocol) == model.Shadowsocks {
+		sanitized, errSS := SanitizeShadowsocksInboundSettings(inbound.Settings)
+		if errSS != nil {
+			logger.Warningf("UpdateInbound: sanitize shadowsocks settings: %v", errSS)
+		} else {
+			inbound.Settings = sanitized
+		}
+		if errSS := s.syncShadowsocksMethodChange(inbound, originalOldInbound.Settings); errSS != nil {
+			logger.Warningf("UpdateInbound: sync shadowsocks method change: %v", errSS)
+		}
+	}
 	if _, tagErr := s.AssignInboundTag(inbound, multiMode); tagErr != nil {
 		return inbound, false, tagErr
 	}

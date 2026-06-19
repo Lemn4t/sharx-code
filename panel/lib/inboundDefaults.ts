@@ -3,6 +3,12 @@
  * Matches structures used by the legacy web UI (x-ui style).
  */
 
+import {
+  parseShadowsocksFromSettings,
+  randomShadowsocksServerPassword,
+  stripShadowsocksClientMethods,
+} from "@/lib/shadowsocksKeys";
+
 export type InboundFormProtocol =
   | "vless"
   | "vmess"
@@ -1793,9 +1799,10 @@ export function buildSettingsJson(
       return JSON.stringify(o);
     }
     case "shadowsocks": {
+      const method = opts.ssMethod || "aes-256-gcm";
       const o = {
-        method: opts.ssMethod || "aes-256-gcm",
-        password: opts.ssPassword.trim() || randomPassword(12),
+        method,
+        password: opts.ssPassword.trim() || randomShadowsocksServerPassword(method),
         network: "tcp,udp",
         clients: [],
         ivCheck: false,
@@ -1845,13 +1852,16 @@ export function parseFirstClientFromSettings(
       }
       return out;
     }
+    if (protocol === "shadowsocks") {
+      return parseShadowsocksFromSettings(root);
+    }
     const clients = root.clients;
     if (!Array.isArray(clients) || clients.length === 0) {
       if (protocol === "vless" || protocol === "trojan") {
         return {
           vlessTrojanFallbacks: parseVlessTrojanFallbackRowsFromSettings(settingsStr, protocol),
           vlessDecryption: typeof root.decryption === "string" ? root.decryption : "none",
-          vlessEncryption: typeof root.encryption === "string" ? root.encryption : "none"
+          vlessEncryption: typeof root.encryption === "string" ? root.encryption : "none",
         };
       }
       return {};
@@ -1898,9 +1908,20 @@ export function mergeFirstClientIntoSettings(
   const now = Date.now();
 
   if (protocol === "shadowsocks") {
-    root.method = patch.ssMethod || "aes-256-gcm";
-    root.password = patch.ssPassword.trim() || randomPassword(12);
+    const prevMethod = typeof root.method === "string" ? root.method : "";
+    const method = patch.ssMethod || prevMethod || "aes-256-gcm";
+    const existingPw = typeof root.password === "string" ? root.password.trim() : "";
+    const patchPw = patch.ssPassword.trim();
+    root.method = method;
+    if (patchPw) {
+      root.password = patchPw;
+    } else if (existingPw && method === prevMethod) {
+      root.password = existingPw;
+    } else {
+      root.password = randomShadowsocksServerPassword(method);
+    }
     if (!Array.isArray(root.clients)) root.clients = [];
+    root.clients = stripShadowsocksClientMethods(method, root.clients);
     return JSON.stringify(root);
   }
 

@@ -72,6 +72,7 @@ import {
   type VlessTrojanFallbackFormRow,
   type StreamFormState,
 } from "@/lib/inboundDefaults";
+import { randomShadowsocksServerPassword } from "@/lib/shadowsocksKeys";
 import { sizeFormat } from "@/lib/format";
 import {
   joinNameFlag,
@@ -544,7 +545,7 @@ const defaultForm = () => ({
   trojanPassword: randomPassword(12),
   hysteriaAuth: randomPassword(8),
   ssMethod: "aes-256-gcm",
-  ssPassword: randomPassword(12),
+  ssPassword: randomShadowsocksServerPassword("aes-256-gcm"),
   mixedUser: "proxy",
   mixedPassword: randomPassword(12),
   wireguardForm: defaultWireguardForm(),
@@ -758,7 +759,7 @@ export function InboundsPage() {
         trojanPassword: parsed.trojanPassword ?? randomPassword(12),
         hysteriaAuth: parsed.hysteriaAuth ?? randomPassword(8),
         ssMethod: parsed.ssMethod ?? "aes-256-gcm",
-        ssPassword: parsed.ssPassword ?? randomPassword(12),
+        ssPassword: parsed.ssPassword ?? randomShadowsocksServerPassword(parsed.ssMethod ?? "aes-256-gcm"),
         mixedUser: parsed.mixedUser ?? "proxy",
         mixedPassword: parsed.mixedPassword ?? randomPassword(12),
         wireguardForm:
@@ -5227,9 +5228,14 @@ export function InboundsPage() {
                   <SelectNative
                     id="in-ssm"
                     value={form.ssMethod}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, ssMethod: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      const method = e.target.value;
+                      setForm((f) => ({
+                        ...f,
+                        ssMethod: method,
+                        ssPassword: randomShadowsocksServerPassword(method),
+                      }));
+                    }}
                   >
                     {SS_METHODS.map((m) => (
                       <option key={m} value={m}>
@@ -5255,7 +5261,10 @@ export function InboundsPage() {
                       type="button"
                       variant="secondary"
                       onClick={() =>
-                        setForm((f) => ({ ...f, ssPassword: randomPassword(12) }))
+                        setForm((f) => ({
+                          ...f,
+                          ssPassword: randomShadowsocksServerPassword(f.ssMethod),
+                        }))
                       }
                     >
                       {t("pages.inbounds.addInboundTrojanRegen")}
